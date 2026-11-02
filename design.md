@@ -35,6 +35,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - What we hand out is a prompt, which points the agent at the resources it reads, Luis's decision.
   Its page for people, `messagent.agentics.lwirth.com`, a domain of its own as every client has, shows the prompt most prominently, with a little explanation, and is nice to look at.
 
+- One bot is one agent, a session dedicated to it, Luis's decision: "i guess that IS the messAGENT."
+  What it does is the user's policy, such as a lead that delegates to other agents.
 - The agent is wakeable, not always running, Luis's decision.
   messagent keeps the messages, so the agent can also read them later:
   whether it answers at once or only checks now and then is the user's choice,
