@@ -41,6 +41,14 @@ enum Action {
     Read,
     /// Send the user a message.
     Send { text: String },
+    /// React to a message of the user with an emoji, which replaces the 👀.
+    /// Telegram takes only some emoji, such as 👍 ❤ 🔥 🎉 😁 🤔 👌.
+    React {
+        emoji: String,
+        /// The message, by the `#` number `messagent read` shows; the user's latest without one.
+        #[arg(long)]
+        message: Option<i64>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -50,6 +58,7 @@ fn main() -> Result<()> {
         Action::Watch => watch::watch(&paths),
         Action::Read => read(&paths),
         Action::Send { text } => send(&paths, &text),
+        Action::React { emoji, message } => react(&paths, &emoji, message),
     }
 }
 
@@ -119,6 +128,24 @@ fn send(paths: &Paths, text: &str) -> Result<()> {
         }])?;
     }
     Ok(())
+}
+
+fn react(paths: &Paths, emoji: &str, message: Option<i64>) -> Result<()> {
+    let messenger = messenger(paths)?;
+    let reactions = messenger
+        .reactions()
+        .context("this messenger has no reactions")?;
+    let message = match message {
+        Some(message) => message,
+        None => Log::new(paths)
+            .entries()?
+            .iter()
+            .rev()
+            .filter(|entry| entry.from == Party::User)
+            .find_map(|entry| entry.message)
+            .context("the user has sent no message yet")?,
+    };
+    reactions.react(message, emoji)
 }
 
 fn messenger(paths: &Paths) -> Result<impl Messenger> {

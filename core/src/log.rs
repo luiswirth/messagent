@@ -54,7 +54,8 @@ impl Entry {
             Party::Agent => "agent",
             Party::Messagent => "messagent",
         });
-        format!("[{}] {name}: {}", local(self.time), self.text)
+        let id = self.message.map(|id| format!(" #{id}")).unwrap_or_default();
+        format!("[{}{id}] {name}: {}", local(self.time), self.text)
     }
 }
 
