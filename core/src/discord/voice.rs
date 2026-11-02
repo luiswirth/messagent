@@ -96,23 +96,31 @@ impl Voice {
         };
         let (shared, user, calls) = (self.heard.clone(), self.user, self.calls.clone());
         self.runtime.spawn(async move {
-            match songbird.join(guild, channel).await {
-                Ok(handler) => {
-                    let mut handler = handler.lock().await;
-                    let receiver = Receiver {
-                        user: user.get(),
-                        ssrc: Mutex::new(None),
-                        heard: shared,
-                    };
-                    let receiver = Arc::new(receiver);
-                    handler.add_global_event(
-                        CoreEvent::SpeakingStateUpdate.into(),
-                        Shared(receiver.clone()),
-                    );
-                    handler.add_global_event(CoreEvent::VoiceTick.into(), Shared(receiver));
-                    drop(handler);
-                    calls.send(call).ok();
-                }
+            // The handlers come first: Discord names the user's stream as the bot joins,
+            // and a handler added after that never learns it.
+            let handler = songbird.get_or_insert(guild);
+            let joining = {
+                let mut handler = handler.lock().await;
+                let receiver = Arc::new(Receiver {
+                    user: user.get(),
+                    ssrc: Mutex::new(None),
+                    heard: shared,
+                });
+                handler.remove_all_global_events();
+                handler.add_global_event(
+                    CoreEvent::SpeakingStateUpdate.into(),
+                    Shared(receiver.clone()),
+                );
+                handler.add_global_event(CoreEvent::VoiceTick.into(), Shared(receiver));
+                handler.join(channel).await
+            };
+            match joining {
+                Ok(joined) => match joined.await {
+                    Ok(()) => {
+                        calls.send(call).ok();
+                    }
+                    Err(error) => eprintln!("messagent: can't join the voice channel: {error}"),
+                },
                 Err(error) => eprintln!("messagent: can't join the voice channel: {error}"),
             }
         });
