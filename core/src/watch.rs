@@ -9,7 +9,7 @@ use std::{
     thread,
 };
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::{Config, Entry, Log, Paths, calls, messenger};
 
@@ -52,8 +52,11 @@ pub fn watch(paths: &Paths) -> Result<()> {
     let config = Config::load(paths)?;
     fs::create_dir_all(&paths.state)?;
     let lock = File::create(paths.watch_lock())?;
+    // Another watch of this setup holds the lock: this one waits its turn rather than fails,
+    // so that a service restarted while another watch runs neither loops nor alarms anyone.
     if lock.try_lock().is_err() {
-        bail!("another `messagent watch` is running");
+        eprintln!("messagent watch: another `messagent watch` runs; waiting until it ends");
+        lock.lock()?;
     }
     let mut messenger = messenger::open(&config.messenger, paths)?;
     let log = Log::new(paths);
