@@ -107,6 +107,7 @@ fn config_survives_a_round_trip() {
     };
     let config = Config {
         wake: "wake".into(),
+        speech: None,
         messenger: messenger::Settings::Discord(Settings {
             token: "token".into(),
         }),

@@ -189,6 +189,7 @@ pub fn take(state: &mut State, now: Timestamp, updates: Vec<Update>) -> Fetched 
                 from: Party::User,
                 name: Some(sender.first_name.clone()),
                 message: Some(message.message_id.to_string()),
+                spoken: false,
                 text: text_of(&message),
             }),
             None if opens_with(&message, state.code.as_deref()) => {

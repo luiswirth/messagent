@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use jiff::Timestamp;
 use messagent::{
-    Config, Entry, Log, Party, Paths,
+    Config, Entry, Log, Party, Paths, calls,
     discord::{self, Discord},
     messenger::{self, Settings},
     telegram::{self, Telegram},
@@ -33,6 +33,12 @@ enum Action {
         /// It runs one at a time: messages arriving during a run lead to one more run after it.
         #[arg(long, default_value = "")]
         wake: String,
+        /// The speech engine for calls, where the messenger has them: a shell command `messagent watch` runs
+        /// while a call lasts. It takes one JSON line per request on stdin and answers in JSON lines:
+        /// `{"transcribe": "<wav path>"}` gets `{"text": …}`; `{"speak": "<text>"}` gets one `{"wav": "<path>"}`
+        /// per sentence, then `{"end": true}`; a failure gets `{"error": …}`.
+        #[arg(long)]
+        speech: Option<String>,
     },
     /// Fetch the messages and write them to the log, then run the wake command.
     /// It runs in the background, and must run at least once a day,
@@ -52,6 +58,10 @@ enum Action {
         #[arg(long)]
         format: Option<String>,
     },
+    /// Say something aloud in the call with the user, where the messenger has calls.
+    /// It returns once the words are on their way; if the user speaks over them,
+    /// `messagent read` tells how much they heard.
+    Speak { text: String },
     /// React to a message of the user with an emoji, which replaces the agent's earlier one, such as the 👀.
     /// Telegram takes only some emoji, such as 👍 ❤ 🔥 🎉 😁 🤔 👌.
     React {
@@ -80,7 +90,12 @@ struct Choice {
 fn main() -> Result<()> {
     let paths = Paths::from_env()?;
     match Cli::parse().action {
-        Action::Setup { messenger, wake } => setup(&paths, messenger, wake),
+        Action::Setup {
+            messenger,
+            wake,
+            speech,
+        } => setup(&paths, messenger, wake, speech),
+        Action::Speak { text } => calls::speak(&paths.speak_socket(), &text),
         Action::Watch => watch::watch(&paths),
         Action::Read => read(&paths),
         Action::Send { text, format } => send(&paths, &text, format.as_deref()),
@@ -88,7 +103,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
+fn setup(paths: &Paths, choice: Choice, wake: String, speech: Option<String>) -> Result<()> {
     let token = |file: &PathBuf| -> Result<String> {
         Ok(fs::read_to_string(file)
             .with_context(|| format!("can't read {}", file.display()))?
@@ -123,7 +138,12 @@ fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
         }
         (None, None) => unreachable!("clap requires one"),
     };
-    Config { wake, messenger }.save(paths)?;
+    Config {
+        wake,
+        speech,
+        messenger,
+    }
+    .save(paths)?;
     println!("{next}");
     Ok(())
 }
@@ -172,6 +192,7 @@ fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
             from: Party::Agent,
             name: None,
             message: Some(id),
+            spoken: false,
             text: message,
         }])?;
     }

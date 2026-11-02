@@ -29,6 +29,9 @@ pub struct Entry {
     /// The message's id in its messenger, so that none is logged twice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Said in a call rather than written.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub spoken: bool,
     pub text: String,
 }
 
@@ -39,6 +42,7 @@ impl Entry {
             from: Party::Messagent,
             name: None,
             message: None,
+            spoken: false,
             text,
         }
     }
@@ -55,7 +59,8 @@ impl Entry {
             .as_ref()
             .map(|id| format!(" #{id}"))
             .unwrap_or_default();
-        format!("[{}{id}] {name}: {}", local(self.time), self.text)
+        let spoken = if self.spoken { " (spoken)" } else { "" };
+        format!("[{}{id}] {name}{spoken}: {}", local(self.time), self.text)
     }
 }
 

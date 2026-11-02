@@ -11,10 +11,11 @@ use std::{
 
 use anyhow::{Result, bail};
 
-use crate::{Config, Entry, Log, Paths, messenger};
+use crate::{Config, Entry, Log, Paths, calls, messenger};
 
 /// Runs the wake command, one run at a time:
 /// wakes asked for during a run become one more run after it.
+#[derive(Clone)]
 pub struct Waker {
     sender: Option<mpsc::Sender<()>>,
 }
@@ -62,6 +63,19 @@ pub fn watch(paths: &Paths) -> Result<()> {
         .filter_map(|entry| entry.message)
         .collect();
     let waker = Waker::spawn(config.wake.clone());
+    if let Some(calls) = messenger.calls() {
+        let (engine, socket, log, waker) = (
+            config.speech.clone(),
+            paths.speak_socket(),
+            Log::new(paths),
+            waker.clone(),
+        );
+        thread::spawn(move || {
+            if let Err(error) = calls::serve(calls, engine, socket, log, waker) {
+                eprintln!("messagent watch: calls: {error:#}");
+            }
+        });
+    }
     loop {
         let entries: Vec<Entry> = messenger
             .receive()?

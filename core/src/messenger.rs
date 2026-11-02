@@ -1,11 +1,14 @@
 //! What a messenger can do, as capabilities: each messenger connects with the ones it has.
 //! A message's id is the messenger's own, kept as an opaque string.
 
+use std::sync::mpsc;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     Entry, Paths,
+    calls::Call,
     discord::{self, Discord},
     telegram::{self, Telegram},
 };
@@ -35,6 +38,11 @@ pub trait Reactions {
 /// A messenger: messages always, the other capabilities where it has them.
 pub trait Messenger: Messages {
     fn reactions(&self) -> Option<&dyn Reactions> {
+        None
+    }
+
+    /// Calls with the user, each handed over as it starts; taken once, by `watch`.
+    fn calls(&mut self) -> Option<mpsc::Receiver<Call>> {
         None
     }
 }

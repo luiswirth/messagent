@@ -5,8 +5,9 @@
 //! so whatever came while no one watched is fetched once the Gateway is ready.
 
 mod rest;
+mod voice;
 
-use std::{fs, io::ErrorKind, path::PathBuf, thread, time::Duration};
+use std::{fs, io::ErrorKind, path::PathBuf, sync::mpsc, thread, time::Duration};
 
 pub use rest::{Application, MESSAGE_LIMIT, PAGE, Refusal, Rest};
 
@@ -24,6 +25,7 @@ use twilight_model::{
 
 use crate::{
     Entry, Party, Paths,
+    calls::Call,
     config::write_private,
     messenger::{CONNECTED, Messages, Messenger, Reactions, split},
 };
@@ -61,6 +63,11 @@ pub struct Discord {
     state: State,
     file: PathBuf,
     gateway: Option<Gateway>,
+    /// Where calls go, once `watch` takes them.
+    calls: Option<mpsc::Sender<Call>>,
+    voice: Option<voice::Voice>,
+    /// The bot's own user, from the Gateway.
+    bot: Option<Id<UserMarker>>,
 }
 
 /// The connection that receives, opened by the first `receive`.
@@ -85,6 +92,9 @@ impl Discord {
             state,
             file,
             gateway: None,
+            calls: None,
+            voice: None,
+            bot: None,
         })
     }
 
@@ -162,12 +172,41 @@ impl Discord {
     }
 }
 
+impl Discord {
+    /// Lets the bot follow the user into voice channels, once `watch` takes calls
+    /// and the bot knows itself and the server.
+    fn give_voice(&mut self) {
+        if let (Some(calls), Some(bot), Some(user), Some(guild), Some(gateway), None) = (
+            &self.calls,
+            self.bot,
+            self.state.user,
+            self.state.guild,
+            &self.gateway,
+            &self.voice,
+        ) {
+            self.voice = Some(voice::Voice::new(
+                gateway.runtime.handle().clone(),
+                gateway.shard.sender(),
+                bot,
+                user,
+                guild,
+                calls.clone(),
+            ));
+        }
+    }
+}
+
 impl Gateway {
     fn connect(token: &str) -> Result<Self> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
+        // Several threads, since a call's tasks run on also while no one waits for an event.
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
             .enable_all()
             .build()?;
-        let intents = Intents::GUILDS | Intents::GUILD_MESSAGES | Intents::MESSAGE_CONTENT;
+        let intents = Intents::GUILDS
+            | Intents::GUILD_MESSAGES
+            | Intents::MESSAGE_CONTENT
+            | Intents::GUILD_VOICE_STATES;
         // The shard's queue starts a task, so it is made within the runtime.
         let shard = {
             let _runtime = runtime.enter();
@@ -183,7 +222,11 @@ impl Gateway {
     /// The next event of interest, closes always among them;
     /// it rides out passing failures, and the shard reconnects itself.
     fn next(&mut self) -> Result<Event> {
-        let wanted = EventTypeFlags::READY | EventTypeFlags::MESSAGE_CREATE;
+        let wanted = EventTypeFlags::READY
+            | EventTypeFlags::MESSAGE_CREATE
+            | EventTypeFlags::GUILD_CREATE
+            | EventTypeFlags::VOICE_STATE_UPDATE
+            | EventTypeFlags::VOICE_SERVER_UPDATE;
         loop {
             match self.runtime.block_on(self.shard.next_event(wanted)) {
                 Some(Ok(Event::GatewayClose(frame))) => {
@@ -252,10 +295,43 @@ impl Messages for Discord {
             self.gateway = Some(Gateway::connect(&self.token)?);
         }
         loop {
-            let event = self.gateway.as_mut().context("connected above")?.next()?;
+            let gateway = self.gateway.as_mut().context("connected above")?;
+            let event = gateway.next()?;
+            if let Some(voice) = &self.voice {
+                voice.process(&event);
+            }
             let entries = match event {
                 // A new session may have missed messages, which Discord's history still holds.
-                Event::Ready(_) => self.catch_up()?,
+                Event::Ready(ready) => {
+                    self.bot = Some(ready.user.id);
+                    self.give_voice();
+                    self.catch_up()?
+                }
+                // Where the user is in a voice channel already, the bot joins them.
+                Event::GuildCreate(guild) if Some(guild.id()) == self.state.guild => {
+                    if let (
+                        twilight_model::gateway::payload::incoming::GuildCreate::Available(guild),
+                        Some(voice),
+                    ) = (guild.as_ref(), self.voice.as_mut())
+                    {
+                        let channel = guild
+                            .voice_states
+                            .iter()
+                            .find(|state| Some(state.user_id) == self.state.user)
+                            .and_then(|state| state.channel_id);
+                        voice.follow(channel);
+                    }
+                    Vec::new()
+                }
+                Event::VoiceStateUpdate(update)
+                    if Some(update.user_id) == self.state.user
+                        && update.guild_id == self.state.guild =>
+                {
+                    if let Some(voice) = &mut self.voice {
+                        voice.follow(update.channel_id);
+                    }
+                    Vec::new()
+                }
                 Event::MessageCreate(message) => {
                     let mut entries = Vec::new();
                     if self.state.channel.is_none()
@@ -263,6 +339,7 @@ impl Messages for Discord {
                         && Some(message.author.id) == self.state.user
                     {
                         entries.push(self.connect(&message)?);
+                        self.give_voice();
                     }
                     entries.extend(take(&mut self.state, vec![message.0]));
                     entries
@@ -297,6 +374,12 @@ impl Messenger for Discord {
     fn reactions(&self) -> Option<&dyn Reactions> {
         Some(self)
     }
+
+    fn calls(&mut self) -> Option<mpsc::Receiver<Call>> {
+        let (sender, receiver) = mpsc::channel();
+        self.calls = Some(sender);
+        Some(receiver)
+    }
 }
 
 /// Takes in messages: the user's in the chat become entries, each once.
@@ -323,6 +406,7 @@ pub fn take(state: &mut State, mut messages: Vec<Message>) -> Vec<Entry> {
                     .unwrap_or(message.author.name.clone()),
             ),
             message: Some(message.id.to_string()),
+            spoken: false,
             text: text_of(&message),
         });
     }

@@ -30,6 +30,9 @@
         bacon
         cargo-edit
         just
+        # Discord's voice is Opus, which songbird codes through libopus.
+        libopus
+        pkg-config
       ];
   in {
     # Every language in the tree, behind one command. The global pre-commit
@@ -50,6 +53,8 @@
         version = "0.1.0";
         src = ./.;
         cargoLock.lockFile = ./Cargo.lock;
+        nativeBuildInputs = [pkgs.pkg-config];
+        buildInputs = [pkgs.libopus];
       };
     });
 

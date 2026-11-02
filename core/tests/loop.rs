@@ -46,6 +46,7 @@ fn entry(from: Party, text: &str) -> Entry {
         from,
         name: None,
         message: None,
+        spoken: false,
         text: text.into(),
     }
 }
@@ -168,6 +169,7 @@ fn config_survives_a_round_trip() {
     let paths = paths();
     let config = Config {
         wake: "wake".into(),
+        speech: None,
         messenger: messenger::Settings::Telegram(Settings {
             token: "token".into(),
         }),
