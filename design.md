@@ -56,6 +56,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
   the core runs a wake command set at setup, and a user with a custom setup sets their own.
 - The text loop is tested with a bot made in BotFather, Luis's decision; onboarding through managed bots comes after.
 - Only the user gets through by default, and only the user can allow other people to speak to the agent, Luis's decision.
+- Messages from anyone other than the user are logged by the program, never passed to an LLM by default, since that opens the door to prompt injection, Luis's decision.
+  The user may review the log with an LLM.
 
 - One messenger chat is one conversation, Luis's decision:
   the private chat with the bot is one, and a group with the bot is a shared one of several people and agents.
