@@ -72,7 +72,7 @@ struct Choice {
     telegram: Option<PathBuf>,
     /// Discord, through a bot: a file holding the bot's token, from the Developer Portal.
     /// The owner of the bot's application is the user. It prints a link that adds the bot to a server:
-    /// once the bot shares a server with the user, while `messagent watch` runs, it opens a DM with them.
+    /// the text channel there where the user first writes, while `messagent watch` runs, becomes the chat.
     #[arg(long, value_name = "TOKEN_FILE")]
     discord: Option<PathBuf>,
 }
@@ -117,7 +117,7 @@ fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
                 Settings::Discord(settings),
                 format!(
                     "The user is {owner}, the owner of the bot's application. They add the bot to a server of theirs with\n{link}\n\
-                     While `messagent watch` runs, the bot then opens a DM with them."
+                     While `messagent watch` runs, the text channel there where they first write becomes the chat."
                 ),
             )
         }

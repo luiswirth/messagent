@@ -1,6 +1,6 @@
-//! Discord as the messenger: a bot whose DM with the user is the chat.
+//! Discord as the messenger: a bot in the user's server, as a friend in a friend group's.
 //! The user is the owner of the bot's application, since on Discord the user makes it.
-//! The bot reaches the user only while they share a server, which calls will need anyway.
+//! The chat is the server's text channel where the user first writes once the bot is set up.
 //! Messages arrive through the Gateway; Discord keeps the history,
 //! so whatever came while no one watched is fetched once the Gateway is ready.
 
@@ -18,7 +18,7 @@ use twilight_model::{
     channel::message::{EmojiReactionType, Message, MessageFlags},
     id::{
         Id,
-        marker::{ChannelMarker, MessageMarker, UserMarker},
+        marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
     },
 };
 
@@ -28,13 +28,12 @@ use crate::{
     messenger::{CONNECTED, Messages, Messenger, Reactions, split},
 };
 
-/// What the bot asks for when added to a server: seeing a voice channel, joining it and speaking.
-/// The chat is a DM, which needs no permission.
-const PERMISSIONS: u64 = (1 << 10) | (1 << 20) | (1 << 21);
+/// What the bot asks for when added to a server: in the text channel, seeing it,
+/// reading its history, writing and reacting; in the voice channel, joining and speaking.
+const PERMISSIONS: u64 = (1 << 10) | (1 << 16) | (1 << 11) | (1 << 6) | (1 << 20) | (1 << 21);
 
-/// Discord's error codes for a user the bot can't DM yet:
-/// one who takes no DMs from it, and one it shares no server with.
-const CANT_DM: [i64; 2] = [50007, 50278];
+/// The application flag that lets a bot in under 100 servers read messages it isn't mentioned in.
+const MESSAGE_CONTENT: u64 = 1 << 19;
 
 /// Discord's part of the config.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -48,8 +47,10 @@ pub struct Settings {
 pub struct State {
     /// The user: the owner of the bot's application.
     pub user: Option<Id<UserMarker>>,
-    /// The DM with the user, set once the bot has reached them there.
+    /// The text channel that is the chat, set by the user's first message in a server.
     pub channel: Option<Id<ChannelMarker>>,
+    /// The server of the chat.
+    pub guild: Option<Id<GuildMarker>>,
     /// The newest message of the DM taken in.
     pub last: Option<Id<MessageMarker>>,
 }
@@ -87,7 +88,7 @@ impl Discord {
         })
     }
 
-    /// Starts over with the application's owner as the user,
+    /// Starts over with the application's owner as the user, lets the bot read the server's messages,
     /// and returns the link that adds the bot to a server, with the owner's name.
     pub fn setup(&mut self) -> Result<(String, String)> {
         let application = self
@@ -102,6 +103,11 @@ impl Discord {
             ),
             (None, None) => bail!("Discord names no owner of the bot's application"),
         };
+        if application.flags & MESSAGE_CONTENT == 0 {
+            self.rest
+                .set_flags(application.flags | MESSAGE_CONTENT)
+                .context("can't let the bot read the server's messages")?;
+        }
         self.state = State {
             user: Some(user),
             ..State::default()
@@ -120,44 +126,27 @@ impl Discord {
 
     fn channel(&self) -> Result<Id<ChannelMarker>> {
         self.state.channel.context(
-            "the user is not connected yet: the bot reaches them once it is in a server of theirs \
+            "the user is not connected yet: they write in a text channel of the bot's server \
              while `messagent watch` runs",
         )
     }
 
-    /// Opens the DM with the user and greets them there, returning the notice for the log,
-    /// or nothing while the bot can't reach them yet.
-    fn connect(&mut self) -> Result<Option<Entry>> {
-        let user = self
-            .state
-            .user
-            .context("no user is set: `messagent setup` sets the application's owner")?;
-        let channel = patiently(|| self.rest.open_dm(user))?;
-        match patiently(|| self.rest.send(channel, CONNECTED)) {
-            Ok(_) => {}
-            Err(error)
-                if error
-                    .downcast_ref::<Refusal>()
-                    .is_some_and(|refusal| CANT_DM.contains(&refusal.code)) =>
-            {
-                return Ok(None);
-            }
-            Err(error) => return Err(error),
-        }
-        self.state.channel = Some(channel);
+    /// Makes the channel of the user's message the chat, and greets them there,
+    /// returning the notice for the log.
+    fn connect(&mut self, message: &Message) -> Result<Entry> {
+        self.state.channel = Some(message.channel_id);
+        self.state.guild = message.guild_id;
         self.save()?;
-        Ok(Some(Entry::notice(
+        patiently(|| self.rest.send(message.channel_id, CONNECTED))?;
+        Ok(Entry::notice(
             Timestamp::now(),
-            "The user connected: the bot reached them in a DM.".into(),
-        )))
+            "The user connected: the channel they wrote in is the chat.".into(),
+        ))
     }
 
-    /// Connects where the user isn't yet, and fetches what came while no one watched.
+    /// Fetches what came while no one watched.
     fn catch_up(&mut self) -> Result<Vec<Entry>> {
         let mut entries = Vec::new();
-        if self.state.channel.is_none() {
-            entries.extend(self.connect()?);
-        }
         let Some(channel) = self.state.channel else {
             return Ok(entries);
         };
@@ -178,7 +167,7 @@ impl Gateway {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        let intents = Intents::DIRECT_MESSAGES | Intents::GUILDS;
+        let intents = Intents::GUILDS | Intents::GUILD_MESSAGES | Intents::MESSAGE_CONTENT;
         // The shard's queue starts a task, so it is made within the runtime.
         let shard = {
             let _runtime = runtime.enter();
@@ -194,8 +183,7 @@ impl Gateway {
     /// The next event of interest, closes always among them;
     /// it rides out passing failures, and the shard reconnects itself.
     fn next(&mut self) -> Result<Event> {
-        let wanted =
-            EventTypeFlags::READY | EventTypeFlags::GUILD_CREATE | EventTypeFlags::MESSAGE_CREATE;
+        let wanted = EventTypeFlags::READY | EventTypeFlags::MESSAGE_CREATE;
         loop {
             match self.runtime.block_on(self.shard.next_event(wanted)) {
                 Some(Ok(Event::GatewayClose(frame))) => {
@@ -207,6 +195,9 @@ impl Gateway {
                     // https://docs.discord.com/developers/topics/opcodes-and-status-codes#gateway-gateway-close-event-codes
                     Some(frame) if frame.code == 4004 => {
                         bail!("Discord no longer takes the bot's token")
+                    }
+                    Some(frame) if frame.code == 4014 => {
+                        bail!("the bot may not read messages: `messagent setup` lets it")
                     }
                     Some(frame) => bail!(
                         "Discord closed the Gateway for good ({}): {}",
@@ -265,15 +256,13 @@ impl Messages for Discord {
             let entries = match event {
                 // A new session may have missed messages, which Discord's history still holds.
                 Event::Ready(_) => self.catch_up()?,
-                // A server shared with the user may be what lets the bot reach them.
-                Event::GuildCreate(_) if self.state.channel.is_none() => self.catch_up()?,
                 Event::MessageCreate(message) => {
                     let mut entries = Vec::new();
                     if self.state.channel.is_none()
-                        && message.guild_id.is_none()
+                        && message.guild_id.is_some()
                         && Some(message.author.id) == self.state.user
                     {
-                        entries.extend(self.connect()?);
+                        entries.push(self.connect(&message)?);
                     }
                     entries.extend(take(&mut self.state, vec![message.0]));
                     entries
@@ -310,7 +299,7 @@ impl Messenger for Discord {
     }
 }
 
-/// Takes in messages: the user's in the DM become entries, each once.
+/// Takes in messages: the user's in the chat become entries, each once.
 pub fn take(state: &mut State, mut messages: Vec<Message>) -> Vec<Entry> {
     messages.sort_by_key(|message| message.id);
     let mut entries = Vec::new();

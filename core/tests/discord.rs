@@ -7,7 +7,7 @@ use serde_json::json;
 use twilight_model::{channel::Message, id::Id};
 
 const USER: u64 = 42;
-const DM: u64 = 7;
+const CHAT: u64 = 7;
 
 fn message(id: u64, channel: u64, author: u64, extra: serde_json::Value) -> Message {
     let mut message = json!({
@@ -45,7 +45,8 @@ fn text(id: u64, channel: u64, author: u64, text: &str) -> Message {
 fn connected() -> State {
     State {
         user: Some(Id::new(USER)),
-        channel: Some(Id::new(DM)),
+        channel: Some(Id::new(CHAT)),
+        guild: Some(Id::new(1)),
         last: None,
     }
 }
@@ -54,13 +55,13 @@ fn connected() -> State {
 fn only_the_users_messages_in_the_dm_get_through_each_once() {
     let mut state = connected();
     let messages = vec![
-        text(13, DM, USER, "second"),
-        text(11, DM, USER, "first"),
-        text(12, DM, 99, "the bot's own"),
+        text(13, CHAT, USER, "second"),
+        text(11, CHAT, USER, "first"),
+        text(12, CHAT, 99, "the bot's own"),
         text(14, 8, USER, "elsewhere"),
         message(
             15,
-            DM,
+            CHAT,
             USER,
             json!({
                 "content": "look",
@@ -85,7 +86,7 @@ fn only_the_users_messages_in_the_dm_get_through_each_once() {
     assert_eq!(entries[0].name.as_deref(), Some("Luis"));
     assert_eq!(entries[0].message.as_deref(), Some("11"));
     assert_eq!(state.last, Some(Id::new(15)));
-    assert!(take(&mut state, vec![text(13, DM, USER, "second")]).is_empty());
+    assert!(take(&mut state, vec![text(13, CHAT, USER, "second")]).is_empty());
 }
 
 #[test]
@@ -94,7 +95,7 @@ fn nothing_gets_through_before_the_dm_is_open() {
         user: Some(Id::new(USER)),
         ..State::default()
     };
-    assert!(take(&mut state, vec![text(1, DM, USER, "hi")]).is_empty());
+    assert!(take(&mut state, vec![text(1, CHAT, USER, "hi")]).is_empty());
 }
 
 #[test]

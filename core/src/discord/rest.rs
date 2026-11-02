@@ -30,7 +30,7 @@ pub struct Rest {
 #[derive(Debug)]
 pub struct Refusal {
     pub status: u16,
-    /// Discord's own error code, such as 50007 for a user who takes no DMs from the bot.
+    /// Discord's own error code.
     pub code: i64,
     pub message: String,
 }
@@ -60,6 +60,8 @@ struct Error {
 #[derive(Deserialize, Debug)]
 pub struct Application {
     pub id: Id<ApplicationMarker>,
+    #[serde(default)]
+    pub flags: u64,
     pub owner: Option<Owner>,
     pub team: Option<Team>,
 }
@@ -74,11 +76,6 @@ pub struct Owner {
 #[derive(Deserialize, Debug)]
 pub struct Team {
     pub owner_user_id: Id<UserMarker>,
-}
-
-#[derive(Deserialize)]
-struct Channel {
-    id: Id<ChannelMarker>,
 }
 
 impl Rest {
@@ -149,14 +146,14 @@ impl Rest {
         self.get("/oauth2/applications/@me")
     }
 
-    /// The DM channel with a user, opened where there is none yet.
-    pub fn open_dm(&self, user: Id<UserMarker>) -> Result<Id<ChannelMarker>> {
-        let channel: Channel = serde_json::from_value(self.call(
-            "POST",
-            "/users/@me/channels",
-            Some(json!({ "recipient_id": user })),
-        )?)?;
-        Ok(channel.id)
+    /// Sets the application's flags, of which only some can be set this way.
+    pub fn set_flags(&self, flags: u64) -> Result<()> {
+        self.call(
+            "PATCH",
+            "/applications/@me",
+            Some(json!({ "flags": flags })),
+        )?;
+        Ok(())
     }
 
     pub fn send(&self, channel: Id<ChannelMarker>, content: &str) -> Result<Message> {
