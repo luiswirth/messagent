@@ -34,7 +34,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
   Everything is on the user's own server, as with a friend group's, Luis's decision: a text channel for writing, a voice channel for calls, no DM.
 - A call, as proposed by the builder and accepted by Luis: the agent joins the user's voice call.
   What the user says reaches the agent as spoken entries in the same log; the agent speaks with `messagent speak`.
-  The speech engines are commands set at setup, like the wake command.
+  The speech engine is a command set at setup, like the wake command, kept running while a call lasts, since loading its models takes seconds.
   Telegram bots can't call.
 - Telegram first, as a bot that is a contact of its own, with voice notes for now, Luis's decision.
   WhatsApp is not pursued for now: its setup and its rules on AI make it a hassle.
