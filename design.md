@@ -18,6 +18,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
   A voice note is a message with audio content.
 - The agent uses messagent through a command line, `messagent`, its one interface, Luis's decision:
   "CLI are the way to go in gerneral for harness-agnostic things."
+  Every agent has a shell, Luis's decision: "a agent that cannot use a shell is not an agent in my definition".
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
 - It runs on the user's machine, where their agent already runs, Luis's decision.
   We host as little as possible, for cost and maintenance.
