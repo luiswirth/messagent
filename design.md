@@ -19,6 +19,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - Reacting to messages is an additional, optional capability of a messenger, Luis's decision.
 - A message the agent has read gets 👀, Luis's decision: "so it's not only received but acutally seen by an agent/llm."
 - The agent can react to the user's messages itself, with `messagent react`, Luis's decision.
+- The agent writes in each messenger's own format, passed through raw, Luis's decision:
+  "just let telegram do all the things. the agent should just write whatever each messager can accept. fully raw, full power, nothing custom".
 - Agents never have to keep calling something to show they are typing, Luis's decision.
 - The agent uses messagent through a command line, `messagent`, its one interface, Luis's decision:
   "CLI are the way to go in gerneral for harness-agnostic things."
