@@ -224,7 +224,7 @@ pub fn watch(paths: &Paths) -> Result<()> {
         if let Some(user) = fetched.connected {
             config.save(paths)?;
             let confirmation = "Connected: your messages here now reach your agent.";
-            if let Err(error) = bot.send_message(user, confirmation) {
+            if let Err(error) = bot.send_message(user, confirmation, None) {
                 eprintln!("messagent watch: can't confirm the connection: {error:#}");
             }
         }

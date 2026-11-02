@@ -137,8 +137,13 @@ impl Bot {
         Ok(())
     }
 
-    pub fn send_message(&self, chat: i64, text: &str) -> Result<Message> {
-        self.call("sendMessage", json!({ "chat_id": chat, "text": text }))
+    /// Sends a text, formatted by the parse mode where there is one.
+    pub fn send_message(&self, chat: i64, text: &str, parse_mode: Option<&str>) -> Result<Message> {
+        let mut body = json!({ "chat_id": chat, "text": text });
+        if let Some(parse_mode) = parse_mode {
+            body["parse_mode"] = parse_mode.into();
+        }
+        self.call("sendMessage", body)
     }
 }
 
@@ -186,8 +191,11 @@ impl Messages for Telegram {
         split(text)
     }
 
-    fn send(&self, message: &str) -> Result<i64> {
-        Ok(self.bot.send_message(self.user, message)?.message_id)
+    fn send(&self, message: &str, format: Option<&str>) -> Result<i64> {
+        Ok(self
+            .bot
+            .send_message(self.user, message, format)?
+            .message_id)
     }
 }
 

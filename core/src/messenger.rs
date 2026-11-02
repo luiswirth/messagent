@@ -8,7 +8,8 @@ pub trait Messages {
     fn split(&self, text: &str) -> Vec<String>;
 
     /// Sends one message to the user, and returns its id in the chat.
-    fn send(&self, message: &str) -> Result<i64>;
+    /// A format is the messenger's own, passed to it as is; without one, the message is plain text.
+    fn send(&self, message: &str, format: Option<&str>) -> Result<i64>;
 }
 
 /// Reacting to a message of the chat with an emoji.

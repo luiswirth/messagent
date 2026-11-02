@@ -40,7 +40,15 @@ enum Action {
     /// The user sees 👀 on each, since the agent has now seen it.
     Read,
     /// Send the user a message.
-    Send { text: String },
+    Send {
+        text: String,
+        /// The messenger's own formatting, passed to it as is, with the text unsplit.
+        /// For Telegram, its parse mode: `HTML` or `MarkdownV2`,
+        /// as https://core.telegram.org/bots/api#formatting-options describes.
+        /// Without one, plain text.
+        #[arg(long)]
+        format: Option<String>,
+    },
     /// React to a message of the user with an emoji, which replaces the 👀.
     /// Telegram takes only some emoji, such as 👍 ❤ 🔥 🎉 😁 🤔 👌.
     React {
@@ -57,7 +65,7 @@ fn main() -> Result<()> {
         Action::Setup { token_file, wake } => setup(&paths, &token_file, wake),
         Action::Watch => watch::watch(&paths),
         Action::Read => read(&paths),
-        Action::Send { text } => send(&paths, &text),
+        Action::Send { text, format } => send(&paths, &text, format.as_deref()),
         Action::React { emoji, message } => react(&paths, &emoji, message),
     }
 }
@@ -113,11 +121,16 @@ fn read(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
-fn send(paths: &Paths, text: &str) -> Result<()> {
+fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
     let messenger = messenger(paths)?;
     let log = Log::new(paths);
-    for message in messenger.split(text) {
-        let id = messenger.send(&message)?;
+    // Formatted text is the messenger's to parse, so only plain text is split.
+    let messages = match format {
+        Some(_) => vec![text.to_string()],
+        None => messenger.split(text),
+    };
+    for message in messages {
+        let id = messenger.send(&message, format)?;
         log.append(&[Entry {
             time: Timestamp::now(),
             from: Party::Agent,
