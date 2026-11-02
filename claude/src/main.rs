@@ -108,6 +108,7 @@ fn wake(session: &str, claude: &[String]) -> Result<()> {
     let prompt = format!("{INSTRUCTIONS}\n\n{messages}");
     let status = Command::new("claude")
         .args(["--print", "--resume", session])
+        .env(RESUMED, "1")
         .args(claude)
         .arg(prompt)
         .status()
@@ -141,31 +142,37 @@ fn deliver(stdout: &Mutex<io::Stdout>) -> Result<()> {
     )
 }
 
+/// Set for a resumed session, which starts the channel too but ignores what it sends:
+/// a channel there would mark messages read that never reach the agent.
+const RESUMED: &str = "MESSAGENT_CLAUDE_RESUMED";
+
 fn channel() -> Result<()> {
+    let delivering = env::var_os(RESUMED).is_none();
     let socket = socket()?;
     std::fs::create_dir_all(socket.parent().context("the socket has a parent")?)?;
-    if UnixStream::connect(&socket).is_ok() {
-        bail!("another session holds the messagent channel");
-    }
-    std::fs::remove_file(&socket).ok();
-    let listener = UnixListener::bind(&socket)?;
     let stdout = Arc::new(Mutex::new(io::stdout()));
-
-    let writer = stdout.clone();
-    thread::spawn(move || {
-        for _ in listener.incoming() {
-            if let Err(error) = deliver(&writer) {
-                eprintln!("messagent channel: {error:#}");
-            }
+    if delivering {
+        if UnixStream::connect(&socket).is_ok() {
+            bail!("another session holds the messagent channel");
         }
-    });
+        std::fs::remove_file(&socket).ok();
+        let listener = UnixListener::bind(&socket)?;
+        let writer = stdout.clone();
+        thread::spawn(move || {
+            for _ in listener.incoming() {
+                if let Err(error) = deliver(&writer) {
+                    eprintln!("messagent channel: {error:#}");
+                }
+            }
+        });
+    }
 
     for line in io::stdin().lock().lines() {
         let Ok(request) = serde_json::from_str::<Value>(&line?) else {
             continue;
         };
         let method = request["method"].as_str().unwrap_or_default();
-        if method == "notifications/initialized" {
+        if delivering && method == "notifications/initialized" {
             // Messages that came while the session was closed.
             let writer = stdout.clone();
             thread::spawn(move || {
@@ -197,6 +204,8 @@ fn channel() -> Result<()> {
         };
         emit(&stdout, response)?;
     }
-    std::fs::remove_file(&socket).ok();
+    if delivering {
+        std::fs::remove_file(&socket).ok();
+    }
     Ok(())
 }
