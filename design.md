@@ -22,6 +22,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - The agent writes in each messenger's own format, passed through raw, Luis's decision:
   "just let telegram do all the things. the agent should just write whatever each messager can accept. fully raw, full power, nothing custom".
 - Agents never have to keep calling something to show they are typing, Luis's decision.
+  No typing indicator for now, Luis's decision: "not needed".
 - The agent uses messagent through a command line, `messagent`, its one interface, Luis's decision:
   "CLI are the way to go in gerneral for harness-agnostic things."
   Every agent has a shell, Luis's decision: "a agent that cannot use a shell is not an agent in my definition".
