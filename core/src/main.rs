@@ -13,6 +13,8 @@ use messagent::{
 
 /// The user's messenger chat with their agent.
 /// Every message of the chat is kept in a log on this machine.
+/// Each messenger is a setup of its own: where a machine has several,
+/// `MESSAGENT_SETUP` names the one a command acts on.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {

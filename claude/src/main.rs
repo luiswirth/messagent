@@ -56,7 +56,13 @@ fn socket() -> Result<PathBuf> {
     let state = env::var_os("XDG_STATE_HOME")
         .filter(|value| !value.is_empty())
         .map_or_else(|| home.join(".local/state"), PathBuf::from);
-    Ok(state.join("messagent-claude/channel.sock"))
+    let directory = state.join("messagent-claude");
+    // Each setup's agent has a channel of its own.
+    Ok(match messagent::paths::setup()? {
+        Some(name) => directory.join(name),
+        None => directory,
+    }
+    .join("channel.sock"))
 }
 
 /// The unread messages, marked read, empty where there are none.

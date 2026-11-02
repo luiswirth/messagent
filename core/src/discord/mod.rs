@@ -32,8 +32,9 @@ use crate::{
 /// The chat is a DM, which needs no permission.
 const PERMISSIONS: u64 = (1 << 10) | (1 << 20) | (1 << 21);
 
-/// Discord's error code for a user the bot can't DM, such as one it shares no server with.
-const CANT_DM: i64 = 50007;
+/// Discord's error codes for a user the bot can't DM yet:
+/// one who takes no DMs from it, and one it shares no server with.
+const CANT_DM: [i64; 2] = [50007, 50278];
 
 /// Discord's part of the config.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -137,7 +138,7 @@ impl Discord {
             Err(error)
                 if error
                     .downcast_ref::<Refusal>()
-                    .is_some_and(|refusal| refusal.code == CANT_DM) =>
+                    .is_some_and(|refusal| CANT_DM.contains(&refusal.code)) =>
             {
                 return Ok(None);
             }
