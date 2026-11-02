@@ -16,6 +16,9 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - The capabilities are traits, Luis's decision: `Messages`, finished pieces of content in the modalities the messenger carries,
   and `Calls`, live audio both ways.
   A voice note is a message with audio content.
+- Reacting to messages is an additional, optional capability of a messenger, Luis's decision.
+- A message the agent has read gets 👀, Luis's decision: "so it's not only received but acutally seen by an agent/llm."
+- Agents never have to keep calling something to show they are typing, Luis's decision.
 - The agent uses messagent through a command line, `messagent`, its one interface, Luis's decision:
   "CLI are the way to go in gerneral for harness-agnostic things."
   Every agent has a shell, Luis's decision: "a agent that cannot use a shell is not an agent in my definition".
