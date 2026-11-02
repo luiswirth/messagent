@@ -98,6 +98,7 @@ pub fn take(
                 from: Party::User,
                 name: Some(sender.first_name.clone()),
                 update: Some(update.update_id),
+                message: Some(message.message_id),
                 text: text_of(&message),
             }),
             None if config.code.is_some() && opens_with(&message, config.code.as_deref()) => {

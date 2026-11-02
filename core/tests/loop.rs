@@ -48,6 +48,7 @@ fn entry(from: Party, text: &str) -> Entry {
         from,
         name: None,
         update: None,
+        message: None,
         text: text.into(),
     }
 }

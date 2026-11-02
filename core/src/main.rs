@@ -3,7 +3,12 @@ use std::{fs, path::PathBuf};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use jiff::Timestamp;
-use messagent::{Config, Entry, Log, Party, Paths, telegram, watch};
+use messagent::{
+    Config, Entry, Log, Party, Paths,
+    messenger::{Messages, Messenger},
+    telegram::{self, Telegram},
+    watch,
+};
 
 /// The user's messenger chat with their agent.
 /// Every message of the chat is kept in a log on this machine.
@@ -32,6 +37,7 @@ enum Action {
     /// since Telegram keeps a message for 24 hours.
     Watch,
     /// Print the messages not read yet, and mark them read.
+    /// The user sees 👀 on each, since the agent has now seen it.
     Read,
     /// Send the user a message.
     Send { text: String },
@@ -79,28 +85,49 @@ fn code() -> Result<String> {
 }
 
 fn read(paths: &Paths) -> Result<()> {
-    for entry in Log::new(paths).read()? {
+    let entries = Log::new(paths).read()?;
+    for entry in &entries {
         println!("{}", entry.render());
+    }
+    // Without a connected user there is nothing to react in.
+    let Ok(messenger) = messenger(paths) else {
+        return Ok(());
+    };
+    if let Some(reactions) = messenger.reactions() {
+        for message in entries.iter().filter_map(|entry| entry.message) {
+            // The messages are read already, so a failed reaction only warns.
+            if let Err(error) = reactions.react(message, "👀") {
+                eprintln!("messagent: can't mark a message seen: {error:#}");
+            }
+        }
     }
     Ok(())
 }
 
 fn send(paths: &Paths, text: &str) -> Result<()> {
-    let config = Config::load(paths)?;
-    let user = config
-        .user
-        .context("no user is connected yet: they open the link `messagent setup` printed")?;
-    let bot = telegram::Bot::new(&config.token);
+    let messenger = messenger(paths)?;
     let log = Log::new(paths);
-    for message in telegram::split(text) {
-        bot.send_message(user, &message)?;
+    for message in messenger.split(text) {
+        let id = messenger.send(&message)?;
         log.append(&[Entry {
             time: Timestamp::now(),
             from: Party::Agent,
             name: None,
             update: None,
+            message: Some(id),
             text: message,
         }])?;
     }
     Ok(())
+}
+
+fn messenger(paths: &Paths) -> Result<impl Messenger> {
+    let config = Config::load(paths)?;
+    let user = config
+        .user
+        .context("no user is connected yet: they open the link `messagent setup` printed")?;
+    Ok(Telegram {
+        bot: telegram::Bot::new(&config.token),
+        user,
+    })
 }

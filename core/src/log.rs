@@ -29,6 +29,9 @@ pub struct Entry {
     /// The Telegram update it came in, so that none is logged twice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update: Option<i64>,
+    /// The message's id in its Telegram chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<i64>,
     pub text: String,
 }
 
@@ -39,6 +42,7 @@ impl Entry {
             from: Party::Messagent,
             name: None,
             update: None,
+            message: None,
             text,
         }
     }

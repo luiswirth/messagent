@@ -1,5 +1,6 @@
 pub mod config;
 pub mod log;
+pub mod messenger;
 pub mod paths;
 pub mod telegram;
 pub mod watch;

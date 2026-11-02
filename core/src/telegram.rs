@@ -6,6 +6,8 @@ use anyhow::Result;
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
 
+use crate::messenger::{Messages, Messenger, Reactions};
+
 /// Telegram's limit on the length of a message, in UTF-16 code units.
 pub const MESSAGE_LIMIT: usize = 4096;
 
@@ -123,6 +125,18 @@ impl Bot {
         )
     }
 
+    pub fn react(&self, chat: i64, message: i64, emoji: &str) -> Result<()> {
+        self.call::<bool>(
+            "setMessageReaction",
+            json!({
+                "chat_id": chat,
+                "message_id": message,
+                "reaction": [{ "type": "emoji", "emoji": emoji }],
+            }),
+        )?;
+        Ok(())
+    }
+
     pub fn send_message(&self, chat: i64, text: &str) -> Result<Message> {
         self.call("sendMessage", json!({ "chat_id": chat, "text": text }))
     }
@@ -158,4 +172,33 @@ pub fn split(text: &str) -> Vec<String> {
         rest = &rest[next..];
     }
     messages
+}
+
+/// Telegram as the messenger of the chat with the user.
+pub struct Telegram {
+    pub bot: Bot,
+    /// The user's id, which is also the id of their private chat with the bot.
+    pub user: i64,
+}
+
+impl Messages for Telegram {
+    fn split(&self, text: &str) -> Vec<String> {
+        split(text)
+    }
+
+    fn send(&self, message: &str) -> Result<i64> {
+        Ok(self.bot.send_message(self.user, message)?.message_id)
+    }
+}
+
+impl Reactions for Telegram {
+    fn react(&self, message: i64, emoji: &str) -> Result<()> {
+        self.bot.react(self.user, message, emoji)
+    }
+}
+
+impl Messenger for Telegram {
+    fn reactions(&self) -> Option<&dyn Reactions> {
+        Some(self)
+    }
 }
