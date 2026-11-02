@@ -32,6 +32,9 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
   We host as little as possible, for cost and maintenance.
 - Discord next, for calls, as a bot in a voice channel, with its chat too, Luis's decision: "sure let's go discord for now maybe."
   Everything is on the user's own server, as with a friend group's, Luis's decision: a text channel for writing, a voice channel for calls, no DM.
+- Calls use voice's core, Luis's decision: conversational voice mode, with dictation and read-aloud as its special cases, is a standalone component without transport or UI,
+  and messagent, like voice's browser page with polylogue, only uses it.
+  messagent's own speech layer is a stopgap until then.
 - A call, as proposed by the builder and accepted by Luis: the agent joins the user's voice call.
   What the user says reaches the agent as spoken entries in the same log; the agent speaks with `messagent speak`.
 - One log in time order, each entry tagged with the channel it came by, typed or spoken, Luis's decision.
@@ -79,6 +82,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
   the core runs a wake command set at setup, and a user with a custom setup sets their own.
 - The text loop is tested with a bot made in BotFather, Luis's decision; onboarding through managed bots comes after.
 - Only the user gets through by default, and only the user can allow other people to speak to the agent, Luis's decision.
+- Whoever controls the user's messenger account controls the agent; the answer is to keep the accounts safe, and every user is made aware of it, Luis's decision.
 - Messages from anyone other than the user are logged by the program, never passed to an LLM by default, since that opens the door to prompt injection, Luis's decision.
   The user may review the log with an LLM.
 
