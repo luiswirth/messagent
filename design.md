@@ -37,6 +37,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 
 - One bot is one agent, a session dedicated to it, Luis's decision: "i guess that IS the messAGENT."
   What it does is the user's policy, such as a lead that delegates to other agents.
+  One Telegram bot for everything, Luis's decision.
+- The basic loop comes first, Luis's decision: one bot, one agent, read, send and wake.
 - The agent is wakeable, not always running, Luis's decision.
   messagent keeps the messages, so the agent can also read them later:
   whether it answers at once or only checks now and then is the user's choice,
@@ -55,5 +57,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - The focus is only what the messenger needs, Luis's decision.
 
 ## Open
+
+- Handing over the phone, for the future, Luis's decision: the messagent puts another agent on the chat, which answers through the same bot until it hands back.
 
 - Whether a bot is cut loose from the manager after onboarding, so that we hold no access to it.
