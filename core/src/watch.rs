@@ -54,7 +54,7 @@ pub fn watch(paths: &Paths) -> Result<()> {
     if lock.try_lock().is_err() {
         bail!("another `messagent watch` is running");
     }
-    let mut messenger = messenger::open(&config, paths)?;
+    let mut messenger = messenger::open(&config.messenger, paths)?;
     let log = Log::new(paths);
     let mut logged: HashSet<String> = log
         .entries()?

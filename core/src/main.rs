@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use jiff::Timestamp;
 use messagent::{
-    Config, Entry, Log, Party, Paths, messenger,
+    Config, Entry, Log, Party, Paths,
+    discord::{self, Discord},
+    messenger::{self, Settings},
     telegram::{self, Telegram},
     watch,
 };
@@ -20,12 +22,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
-    /// Connect a messenger. It prints a link: whoever opens it and taps Start,
-    /// while `messagent watch` runs, becomes the user, the only one who gets through.
+    /// Connect a messenger, and print what the user does next.
+    /// Only the user gets through.
     Setup {
-        /// Telegram, through a bot: a file holding the bot's token, from BotFather.
-        #[arg(long, value_name = "TOKEN_FILE")]
-        telegram: PathBuf,
+        #[command(flatten)]
+        messenger: Choice,
         /// A shell command `messagent watch` runs after new messages arrive, to wake the agent.
         /// It runs one at a time: messages arriving during a run lead to one more run after it.
         #[arg(long, default_value = "")]
@@ -44,11 +45,12 @@ enum Action {
         /// The messenger's own formatting, passed to it as is, with the text unsplit.
         /// For Telegram, its parse mode: `HTML` or `MarkdownV2`,
         /// as https://core.telegram.org/bots/api#formatting-options describes.
+        /// Discord takes none: its one format, Markdown, is always on.
         /// Without one, plain text.
         #[arg(long)]
         format: Option<String>,
     },
-    /// React to a message of the user with an emoji, which replaces the 👀.
+    /// React to a message of the user with an emoji, which replaces the agent's earlier one, such as the 👀.
     /// Telegram takes only some emoji, such as 👍 ❤ 🔥 🎉 😁 🤔 👌.
     React {
         emoji: String,
@@ -58,10 +60,25 @@ enum Action {
     },
 }
 
+/// The messenger to connect, one of them.
+#[derive(clap::Args)]
+#[group(required = true, multiple = false)]
+struct Choice {
+    /// Telegram, through a bot: a file holding the bot's token, from BotFather.
+    /// It prints a link: whoever opens it and taps Start, while `messagent watch` runs, becomes the user.
+    #[arg(long, value_name = "TOKEN_FILE")]
+    telegram: Option<PathBuf>,
+    /// Discord, through a bot: a file holding the bot's token, from the Developer Portal.
+    /// The owner of the bot's application is the user. It prints a link that adds the bot to a server:
+    /// once the bot shares a server with the user, while `messagent watch` runs, it opens a DM with them.
+    #[arg(long, value_name = "TOKEN_FILE")]
+    discord: Option<PathBuf>,
+}
+
 fn main() -> Result<()> {
     let paths = Paths::from_env()?;
     match Cli::parse().action {
-        Action::Setup { telegram, wake } => setup(&paths, &telegram, wake),
+        Action::Setup { messenger, wake } => setup(&paths, messenger, wake),
         Action::Watch => watch::watch(&paths),
         Action::Read => read(&paths),
         Action::Send { text, format } => send(&paths, &text, format.as_deref()),
@@ -69,21 +86,43 @@ fn main() -> Result<()> {
     }
 }
 
-fn setup(paths: &Paths, token_file: &PathBuf, wake: String) -> Result<()> {
-    let token = fs::read_to_string(token_file)
-        .with_context(|| format!("can't read {}", token_file.display()))?
-        .trim()
-        .to_string();
-    let config = Config {
-        wake,
-        telegram: Some(telegram::Settings { token }),
+fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
+    let token = |file: &PathBuf| -> Result<String> {
+        Ok(fs::read_to_string(file)
+            .with_context(|| format!("can't read {}", file.display()))?
+            .trim()
+            .to_string())
     };
-    let settings = config.telegram.as_ref().context("set just above")?;
-    let link = Telegram::open(settings, paths)?.setup(code()?)?;
-    config.save(paths)?;
-    println!(
-        "While `messagent watch` runs, the user opens\n{link}\nand taps Start, which makes them the user."
-    );
+    let (messenger, next) = match (choice.telegram, choice.discord) {
+        (Some(file), _) => {
+            let settings = telegram::Settings {
+                token: token(&file)?,
+            };
+            let link = Telegram::open(&settings, paths)?.setup(code()?)?;
+            (
+                Settings::Telegram(settings),
+                format!(
+                    "While `messagent watch` runs, the user opens\n{link}\nand taps Start, which makes them the user."
+                ),
+            )
+        }
+        (None, Some(file)) => {
+            let settings = discord::Settings {
+                token: token(&file)?,
+            };
+            let (link, owner) = Discord::open(&settings, paths)?.setup()?;
+            (
+                Settings::Discord(settings),
+                format!(
+                    "The user is {owner}, the owner of the bot's application. They add the bot to a server of theirs with\n{link}\n\
+                     While `messagent watch` runs, the bot then opens a DM with them."
+                ),
+            )
+        }
+        (None, None) => unreachable!("clap requires one"),
+    };
+    Config { wake, messenger }.save(paths)?;
+    println!("{next}");
     Ok(())
 }
 
@@ -100,7 +139,8 @@ fn read(paths: &Paths) -> Result<()> {
         println!("{}", entry.render());
     }
     // The messages are read already, so a messenger that fails here only warns.
-    let messenger = Config::load(paths).and_then(|config| messenger::open(&config, paths));
+    let messenger =
+        Config::load(paths).and_then(|config| messenger::open(&config.messenger, paths));
     if let Err(error) = &messenger {
         eprintln!("messagent: {error:#}");
     }
@@ -116,7 +156,7 @@ fn read(paths: &Paths) -> Result<()> {
 }
 
 fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
-    let messenger = messenger::open(&Config::load(paths)?, paths)?;
+    let messenger = messenger::open(&Config::load(paths)?.messenger, paths)?;
     let log = Log::new(paths);
     // Formatted text is the messenger's to parse, so only plain text is split.
     let messages = match format {
@@ -137,7 +177,7 @@ fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
 }
 
 fn react(paths: &Paths, emoji: &str, message: Option<String>) -> Result<()> {
-    let messenger = messenger::open(&Config::load(paths)?, paths)?;
+    let messenger = messenger::open(&Config::load(paths)?.messenger, paths)?;
     let reactions = messenger
         .reactions()
         .context("this messenger has no reactions")?;

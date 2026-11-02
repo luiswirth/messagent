@@ -144,35 +144,3 @@ impl Bot {
         self.call("sendMessage", body)
     }
 }
-
-/// Splits a text into messages within Telegram's limit,
-/// at the last line break in the second half of each where there is one.
-pub fn split(text: &str) -> Vec<String> {
-    let mut messages = Vec::new();
-    let mut rest = text;
-    while !rest.is_empty() {
-        let mut length = 0;
-        let mut cut = rest.len();
-        let mut line_break = None;
-        for (index, character) in rest.char_indices() {
-            length += character.len_utf16();
-            if length > MESSAGE_LIMIT {
-                cut = index;
-                break;
-            }
-            if character == '\n' && length > MESSAGE_LIMIT / 2 {
-                line_break = Some(index);
-            }
-        }
-        let mut next = cut;
-        if cut < rest.len()
-            && let Some(line_break) = line_break
-        {
-            cut = line_break;
-            next = line_break + 1;
-        }
-        messages.push(rest[..cut].to_string());
-        rest = &rest[next..];
-    }
-    messages
-}

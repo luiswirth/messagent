@@ -1,7 +1,8 @@
 use jiff::{SignedDuration, Timestamp};
 use messagent::{
     Config, Entry, Log, Party, Paths,
-    telegram::{MESSAGE_LIMIT, Settings, State, Update, split, take},
+    messenger::{self, split},
+    telegram::{MESSAGE_LIMIT, Settings, State, Update, take},
 };
 use serde_json::json;
 
@@ -143,17 +144,20 @@ fn the_start_link_connects_the_user_once() {
 
 #[test]
 fn split_keeps_messages_within_the_limit() {
-    assert!(split("").is_empty());
-    assert_eq!(split("short"), ["short"]);
+    assert!(split("", MESSAGE_LIMIT).is_empty());
+    assert_eq!(split("short", MESSAGE_LIMIT), ["short"]);
     let long = "a".repeat(MESSAGE_LIMIT + 10);
-    let parts = split(&long);
+    let parts = split(&long, MESSAGE_LIMIT);
     assert_eq!(parts.len(), 2);
     assert_eq!(parts.concat(), long);
     let lines = format!("{}\n{}", "a".repeat(3000), "b".repeat(3000));
-    assert_eq!(split(&lines), ["a".repeat(3000), "b".repeat(3000)]);
+    assert_eq!(
+        split(&lines, MESSAGE_LIMIT),
+        ["a".repeat(3000), "b".repeat(3000)]
+    );
     let wide = "😀".repeat(MESSAGE_LIMIT);
     assert!(
-        split(&wide)
+        split(&wide, MESSAGE_LIMIT)
             .iter()
             .all(|part| part.encode_utf16().count() <= MESSAGE_LIMIT)
     );
@@ -164,7 +168,7 @@ fn config_survives_a_round_trip() {
     let paths = paths();
     let config = Config {
         wake: "wake".into(),
-        telegram: Some(Settings {
+        messenger: messenger::Settings::Telegram(Settings {
             token: "token".into(),
         }),
     };

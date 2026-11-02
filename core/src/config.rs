@@ -3,17 +3,17 @@ use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::{Paths, telegram};
+use crate::{Paths, messenger};
 
 /// What setup fixes: the wake command, and the messenger with its settings.
 /// It holds a messenger's credentials, so only its owner may read it.
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Config {
     /// A shell command run after new entries reach the log, empty for none.
     #[serde(default)]
     pub wake: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub telegram: Option<telegram::Settings>,
+    #[serde(flatten)]
+    pub messenger: messenger::Settings,
 }
 
 impl Config {

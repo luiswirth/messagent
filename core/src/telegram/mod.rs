@@ -4,7 +4,7 @@ mod bot;
 
 use std::{fs, io::ErrorKind, path::PathBuf, thread, time::Duration};
 
-pub use bot::{Bot, MESSAGE_LIMIT, Message, Refusal, Update, User, split};
+pub use bot::{Bot, MESSAGE_LIMIT, Message, Refusal, Update, User};
 
 use anyhow::{Context, Result};
 use jiff::{SignedDuration, Timestamp};
@@ -14,7 +14,7 @@ use crate::{
     Entry, Party, Paths,
     config::write_private,
     log::local,
-    messenger::{Messages, Messenger, Reactions},
+    messenger::{CONNECTED, Messages, Messenger, Reactions, split},
 };
 
 /// How long Telegram keeps an update that no one fetched.
@@ -90,7 +90,7 @@ impl Telegram {
 
 impl Messages for Telegram {
     fn split(&self, text: &str) -> Vec<String> {
-        split(text)
+        split(text, MESSAGE_LIMIT)
     }
 
     fn send(&self, message: &str, format: Option<&str>) -> Result<String> {
@@ -109,8 +109,7 @@ impl Messages for Telegram {
                     let fetched = take(&mut self.state, Timestamp::now(), updates);
                     if let Some(user) = fetched.connected {
                         self.save()?;
-                        let confirmation = "Connected: your messages here now reach your agent.";
-                        if let Err(error) = self.bot.send_message(user, confirmation, None) {
+                        if let Err(error) = self.bot.send_message(user, CONNECTED, None) {
                             eprintln!("messagent: can't confirm the connection: {error:#}");
                         }
                     }
