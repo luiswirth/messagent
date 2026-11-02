@@ -51,7 +51,10 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
   a bot gets no chat history, and Telegram keeps a message for it only until fetched, at most 24 hours.
   It need not always run, and may sleep with the laptop, but it must fetch each message within 24 hours.
   After it slept longer, a notice reaches the user that messages may have been lost before reaching the agent.
+  Not necessarily through the bot's chat, Luis's point: the user may not look at it, where the agent works in the background.
 - Claude Code is woken through channels, Luis's decision.
+- Waking a harness is a part of its own, apart from the core, Luis's decision, so the core stays harness-agnostic.
+- Only the user gets through by default, and only the user can allow other people to speak to the agent, Luis's decision.
 
 - One messenger chat is one conversation, Luis's decision:
   the private chat with the bot is one, and a group with the bot is a shared one of several people and agents.
