@@ -3,21 +3,17 @@ use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::Paths;
+use crate::{Paths, telegram};
 
-/// What setup fixes. It holds the bot's token, so only its owner may read it.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+/// What setup fixes: the wake command, and the messenger with its settings.
+/// It holds a messenger's credentials, so only its owner may read it.
+#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Config {
-    pub token: String,
-    /// The Telegram user id of the user, the only one who gets through.
-    /// Unset until the user opens the start link with the code.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub code: Option<String>,
     /// A shell command run after new entries reach the log, empty for none.
     #[serde(default)]
     pub wake: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telegram: Option<telegram::Settings>,
 }
 
 impl Config {
@@ -25,7 +21,7 @@ impl Config {
         let file = paths.config_file();
         let text = fs::read_to_string(&file).with_context(|| {
             format!(
-                "can't read {}; `messagent setup` connects a bot",
+                "can't read {}; `messagent setup` connects a messenger",
                 file.display()
             )
         })?;

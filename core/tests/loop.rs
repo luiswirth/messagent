@@ -1,8 +1,7 @@
 use jiff::{SignedDuration, Timestamp};
 use messagent::{
     Config, Entry, Log, Party, Paths,
-    telegram::{MESSAGE_LIMIT, Update, split},
-    watch::{Fetch, take},
+    telegram::{MESSAGE_LIMIT, Settings, State, Update, split, take},
 };
 use serde_json::json;
 
@@ -20,12 +19,10 @@ fn paths() -> Paths {
     }
 }
 
-fn config() -> Config {
-    Config {
-        token: "token".into(),
+fn connected() -> State {
+    State {
         user: Some(USER),
-        code: None,
-        wake: String::new(),
+        ..State::default()
     }
 }
 
@@ -47,7 +44,6 @@ fn entry(from: Party, text: &str) -> Entry {
         time: Timestamp::now(),
         from,
         name: None,
-        update: None,
         message: None,
         text: text.into(),
     }
@@ -69,8 +65,7 @@ fn read_returns_each_entry_once_without_the_agents() {
 
 #[test]
 fn only_the_users_private_messages_get_through() {
-    let mut config = config();
-    let mut fetch = Fetch::default();
+    let mut state = connected();
     let updates = vec![
         text(1, USER, "mine"),
         text(2, 7, "a stranger's"),
@@ -82,26 +77,25 @@ fn only_the_users_private_messages_get_through() {
             json!({ "photo": [], "caption": "look" }),
         ),
     ];
-    let fetched = take(&mut config, &mut fetch, Timestamp::now(), updates);
+    let fetched = take(&mut state, Timestamp::now(), updates);
     let texts: Vec<_> = fetched.entries.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(
         texts,
         ["mine", "look\n[photo: messagent carries only text so far]"]
     );
     assert_eq!(fetched.entries[0].name.as_deref(), Some("Luis"));
-    assert_eq!(fetch.offset, 5);
+    assert_eq!(fetched.entries[0].message.as_deref(), Some("1"));
+    assert_eq!(state.offset, 5);
 }
 
 #[test]
 fn an_update_already_fetched_is_skipped() {
-    let mut config = config();
-    let mut fetch = Fetch {
+    let mut state = State {
         offset: 2,
-        fetched: None,
+        ..connected()
     };
     let fetched = take(
-        &mut config,
-        &mut fetch,
+        &mut state,
         Timestamp::now(),
         vec![text(1, USER, "old"), text(2, USER, "new")],
     );
@@ -111,35 +105,27 @@ fn an_update_already_fetched_is_skipped() {
 
 #[test]
 fn a_gap_over_a_day_becomes_a_notice() {
-    let mut config = config();
     let now = Timestamp::now();
-    let mut fetch = Fetch {
-        offset: 0,
+    let mut state = State {
         fetched: Some(now - SignedDuration::from_hours(23)),
+        ..connected()
     };
-    assert!(
-        take(&mut config, &mut fetch, now, vec![])
-            .entries
-            .is_empty()
-    );
-    fetch.fetched = Some(now - SignedDuration::from_hours(25));
-    let fetched = take(&mut config, &mut fetch, now, vec![text(1, USER, "back")]);
+    assert!(take(&mut state, now, vec![]).entries.is_empty());
+    state.fetched = Some(now - SignedDuration::from_hours(25));
+    let fetched = take(&mut state, now, vec![text(1, USER, "back")]);
     assert_eq!(fetched.entries[0].from, Party::Messagent);
     assert_eq!(fetched.entries[1].text, "back");
-    assert_eq!(fetch.fetched, Some(now));
+    assert_eq!(state.fetched, Some(now));
 }
 
 #[test]
 fn the_start_link_connects_the_user_once() {
-    let mut config = Config {
-        user: None,
+    let mut state = State {
         code: Some("secret".into()),
-        ..config()
+        ..State::default()
     };
-    let mut fetch = Fetch::default();
     let fetched = take(
-        &mut config,
-        &mut fetch,
+        &mut state,
         Timestamp::now(),
         vec![
             text(1, 7, "/start wrong"),
@@ -149,8 +135,8 @@ fn the_start_link_connects_the_user_once() {
         ],
     );
     assert_eq!(fetched.connected, Some(USER));
-    assert_eq!(config.user, Some(USER));
-    assert_eq!(config.code, None);
+    assert_eq!(state.user, Some(USER));
+    assert_eq!(state.code, None);
     let texts: Vec<_> = fetched.entries.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(texts, ["Luis connected as the user.", "hi"]);
 }
@@ -176,6 +162,12 @@ fn split_keeps_messages_within_the_limit() {
 #[test]
 fn config_survives_a_round_trip() {
     let paths = paths();
-    config().save(&paths).unwrap();
-    assert_eq!(Config::load(&paths).unwrap(), config());
+    let config = Config {
+        wake: "wake".into(),
+        telegram: Some(Settings {
+            token: "token".into(),
+        }),
+    };
+    config.save(&paths).unwrap();
+    assert_eq!(Config::load(&paths).unwrap(), config);
 }

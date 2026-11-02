@@ -1,11 +1,10 @@
-use std::{fs, path::PathBuf};
+use std::{fs, io::Read, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use jiff::Timestamp;
 use messagent::{
-    Config, Entry, Log, Party, Paths,
-    messenger::{Messages, Messenger},
+    Config, Entry, Log, Party, Paths, messenger,
     telegram::{self, Telegram},
     watch,
 };
@@ -21,12 +20,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
-    /// Connect a Telegram bot. It prints a link: whoever opens it and taps Start,
+    /// Connect a messenger. It prints a link: whoever opens it and taps Start,
     /// while `messagent watch` runs, becomes the user, the only one who gets through.
     Setup {
-        /// A file holding the bot's token, from BotFather.
-        #[arg(long)]
-        token_file: PathBuf,
+        /// Telegram, through a bot: a file holding the bot's token, from BotFather.
+        #[arg(long, value_name = "TOKEN_FILE")]
+        telegram: PathBuf,
         /// A shell command `messagent watch` runs after new messages arrive, to wake the agent.
         /// It runs one at a time: messages arriving during a run lead to one more run after it.
         #[arg(long, default_value = "")]
@@ -37,7 +36,7 @@ enum Action {
     /// since Telegram keeps a message for 24 hours.
     Watch,
     /// Print the messages not read yet, and mark them read.
-    /// The user sees 👀 on each, since the agent has now seen it.
+    /// Where the messenger has reactions, the user sees 👀 on each, since the agent has now seen it.
     Read,
     /// Send the user a message.
     Send {
@@ -53,16 +52,16 @@ enum Action {
     /// Telegram takes only some emoji, such as 👍 ❤ 🔥 🎉 😁 🤔 👌.
     React {
         emoji: String,
-        /// The message, by the `#` number `messagent read` shows; the user's latest without one.
+        /// The message, by the `#` id `messagent read` shows; the user's latest without one.
         #[arg(long)]
-        message: Option<i64>,
+        message: Option<String>,
     },
 }
 
 fn main() -> Result<()> {
     let paths = Paths::from_env()?;
     match Cli::parse().action {
-        Action::Setup { token_file, wake } => setup(&paths, &token_file, wake),
+        Action::Setup { telegram, wake } => setup(&paths, &telegram, wake),
         Action::Watch => watch::watch(&paths),
         Action::Read => read(&paths),
         Action::Send { text, format } => send(&paths, &text, format.as_deref()),
@@ -75,20 +74,15 @@ fn setup(paths: &Paths, token_file: &PathBuf, wake: String) -> Result<()> {
         .with_context(|| format!("can't read {}", token_file.display()))?
         .trim()
         .to_string();
-    let bot = telegram::Bot::new(&token).get_me()?;
-    let username = bot.username.context("the bot has no username")?;
-    let code = code()?;
-    Config {
-        token,
-        user: None,
-        code: Some(code.clone()),
+    let config = Config {
         wake,
-    }
-    .save(paths)?;
+        telegram: Some(telegram::Settings { token }),
+    };
+    let settings = config.telegram.as_ref().context("set just above")?;
+    let link = Telegram::open(settings, paths)?.setup(code()?)?;
+    config.save(paths)?;
     println!(
-        "Connected the bot @{username}. While `messagent watch` runs, the user opens\n\
-         https://t.me/{username}?start={code}\n\
-         and taps Start, which makes them the user."
+        "While `messagent watch` runs, the user opens\n{link}\nand taps Start, which makes them the user."
     );
     Ok(())
 }
@@ -96,7 +90,6 @@ fn setup(paths: &Paths, token_file: &PathBuf, wake: String) -> Result<()> {
 /// A code no one can guess, for the start link.
 fn code() -> Result<String> {
     let mut bytes = [0; 12];
-    use std::io::Read;
     fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
@@ -106,12 +99,13 @@ fn read(paths: &Paths) -> Result<()> {
     for entry in &entries {
         println!("{}", entry.render());
     }
-    // Without a connected user there is nothing to react in.
-    let Ok(messenger) = messenger(paths) else {
-        return Ok(());
-    };
-    if let Some(reactions) = messenger.reactions() {
-        for message in entries.iter().filter_map(|entry| entry.message) {
+    // The messages are read already, so a messenger that fails here only warns.
+    let messenger = Config::load(paths).and_then(|config| messenger::open(&config, paths));
+    if let Err(error) = &messenger {
+        eprintln!("messagent: {error:#}");
+    }
+    if let Some(reactions) = messenger.as_ref().ok().and_then(|m| m.reactions()) {
+        for message in entries.iter().filter_map(|entry| entry.message.as_deref()) {
             // The messages are read already, so a failed reaction only warns.
             if let Err(error) = reactions.react(message, "👀") {
                 eprintln!("messagent: can't mark a message seen: {error:#}");
@@ -122,7 +116,7 @@ fn read(paths: &Paths) -> Result<()> {
 }
 
 fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
-    let messenger = messenger(paths)?;
+    let messenger = messenger::open(&Config::load(paths)?, paths)?;
     let log = Log::new(paths);
     // Formatted text is the messenger's to parse, so only plain text is split.
     let messages = match format {
@@ -135,7 +129,6 @@ fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
             time: Timestamp::now(),
             from: Party::Agent,
             name: None,
-            update: None,
             message: Some(id),
             text: message,
         }])?;
@@ -143,8 +136,8 @@ fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-fn react(paths: &Paths, emoji: &str, message: Option<i64>) -> Result<()> {
-    let messenger = messenger(paths)?;
+fn react(paths: &Paths, emoji: &str, message: Option<String>) -> Result<()> {
+    let messenger = messenger::open(&Config::load(paths)?, paths)?;
     let reactions = messenger
         .reactions()
         .context("this messenger has no reactions")?;
@@ -152,22 +145,11 @@ fn react(paths: &Paths, emoji: &str, message: Option<i64>) -> Result<()> {
         Some(message) => message,
         None => Log::new(paths)
             .entries()?
-            .iter()
+            .into_iter()
             .rev()
             .filter(|entry| entry.from == Party::User)
             .find_map(|entry| entry.message)
             .context("the user has sent no message yet")?,
     };
-    reactions.react(message, emoji)
-}
-
-fn messenger(paths: &Paths) -> Result<impl Messenger> {
-    let config = Config::load(paths)?;
-    let user = config
-        .user
-        .context("no user is connected yet: they open the link `messagent setup` printed")?;
-    Ok(Telegram {
-        bot: telegram::Bot::new(&config.token),
-        user,
-    })
+    reactions.react(&message, emoji)
 }

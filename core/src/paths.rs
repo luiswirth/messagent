@@ -37,8 +37,9 @@ impl Paths {
         self.state.join("read")
     }
 
-    pub fn fetch(&self) -> PathBuf {
-        self.state.join("fetch.json")
+    /// What a messenger's part keeps across runs, such as how far it has fetched.
+    pub fn messenger_state(&self, messenger: &str) -> PathBuf {
+        self.state.join(format!("{messenger}.json"))
     }
 
     pub fn watch_lock(&self) -> PathBuf {

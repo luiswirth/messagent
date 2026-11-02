@@ -26,12 +26,9 @@ pub struct Entry {
     pub from: Party,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// The Telegram update it came in, so that none is logged twice.
+    /// The message's id in its messenger, so that none is logged twice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub update: Option<i64>,
-    /// The message's id in its Telegram chat.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message: Option<i64>,
+    pub message: Option<String>,
     pub text: String,
 }
 
@@ -41,7 +38,6 @@ impl Entry {
             time,
             from: Party::Messagent,
             name: None,
-            update: None,
             message: None,
             text,
         }
@@ -54,7 +50,11 @@ impl Entry {
             Party::Agent => "agent",
             Party::Messagent => "messagent",
         });
-        let id = self.message.map(|id| format!(" #{id}")).unwrap_or_default();
+        let id = self
+            .message
+            .as_ref()
+            .map(|id| format!(" #{id}"))
+            .unwrap_or_default();
         format!("[{}{id}] {name}: {}", local(self.time), self.text)
     }
 }
