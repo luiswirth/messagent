@@ -13,6 +13,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - It is built without polylogue for now, Luis's decision:
   the messenger chat is already the shared room, and with no relay a polylogue session would only be a local log between two programs.
 - It is agnostic to the messenger, Luis's decision: each messenger connects on top with the capabilities it has.
+- It embraces how people already use each messenger, Luis's decision: "we should embrace the way people interact with messangers/platforms as much as possible."
 - The capabilities are traits, Luis's decision: `Messages`, finished pieces of content in the modalities the messenger carries,
   and `Calls`, live audio both ways.
   A voice note is a message with audio content.
@@ -30,6 +31,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - It runs on the user's machine, where their agent already runs, Luis's decision.
   We host as little as possible, for cost and maintenance.
 - Discord next, for calls, as a bot in a voice channel, with its chat too, Luis's decision: "sure let's go discord for now maybe."
+  Everything is on the user's own server, as with a friend group's, Luis's decision: a text channel for writing, a voice channel for calls, no DM.
   Telegram bots can't call.
 - Telegram first, as a bot that is a contact of its own, with voice notes for now, Luis's decision.
   WhatsApp is not pursued for now: its setup and its rules on AI make it a hassle.
