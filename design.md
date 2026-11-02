@@ -29,6 +29,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
 - It runs on the user's machine, where their agent already runs, Luis's decision.
   We host as little as possible, for cost and maintenance.
+- Discord next, for calls, as a bot in a voice channel, with its chat too, Luis's decision: "sure let's go discord for now maybe."
+  Telegram bots can't call.
 - Telegram first, as a bot that is a contact of its own, with voice notes for now, Luis's decision.
   WhatsApp is not pursued for now: its setup and its rules on AI make it a hassle.
   Phone numbers for an agent's own account wait until a Telegram bot's limits are reached.
@@ -41,6 +43,9 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
   Agents run in terminals and in GUIs alike, so onboarding assumes neither.
 - Setup is a conversation with the agent, which acts as the setup flow, rather than a website, Luis's decision:
   "everything done through the agent", which he sees as a cool idea for all of Ag².
+- Installing and wiring messagent is the user's agent's work: the agent is the setup wizard, Luis's decision.
+  It keeps the user in the loop and applies the user's policies, if any exist, rather than doing what the user might not want.
+  What an agent without context does by default is to be checked.
 - What we hand out is a prompt, which points the agent at the resources it reads, Luis's decision.
   Its page for people, `messagent.agentics.lwirth.com`, a domain of its own as every client has, shows the prompt most prominently, with a little explanation, and is nice to look at.
 
