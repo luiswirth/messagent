@@ -7,7 +7,9 @@
 mod rest;
 mod voice;
 
-use std::{fs, io::ErrorKind, path::PathBuf, sync::mpsc, thread, time::Duration};
+use std::{
+    collections::HashSet, fs, io::ErrorKind, path::PathBuf, sync::mpsc, thread, time::Duration,
+};
 
 pub use rest::{Application, MESSAGE_LIMIT, PAGE, Refusal, Rest};
 
@@ -16,7 +18,11 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use twilight_gateway::{CloseFrame, Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt};
 use twilight_model::{
-    channel::message::{EmojiReactionType, Message, MessageFlags},
+    channel::{
+        ChannelType,
+        message::{EmojiReactionType, Message, MessageFlags},
+    },
+    gateway::payload::incoming::GuildCreate,
     id::{
         Id,
         marker::{ChannelMarker, GuildMarker, MessageMarker, UserMarker},
@@ -68,6 +74,8 @@ pub struct Discord {
     voice: Option<voice::Voice>,
     /// The bot's own user, from the Gateway.
     bot: Option<Id<UserMarker>>,
+    /// The server's voice channels, whose own chats belong to the conversation too.
+    voice_channels: HashSet<Id<ChannelMarker>>,
 }
 
 /// The connection that receives, opened by the first `receive`.
@@ -95,6 +103,7 @@ impl Discord {
             calls: None,
             voice: None,
             bot: None,
+            voice_channels: HashSet::new(),
         })
     }
 
@@ -163,7 +172,7 @@ impl Discord {
         while let Some(after) = self.state.last {
             let page = patiently(|| self.rest.messages_after(channel, after))?;
             let full = page.len() == PAGE;
-            entries.extend(take(&mut self.state, page));
+            entries.extend(take(&mut self.state, &self.voice_channels, page));
             if !full {
                 break;
             }
@@ -225,6 +234,8 @@ impl Gateway {
         let wanted = EventTypeFlags::READY
             | EventTypeFlags::MESSAGE_CREATE
             | EventTypeFlags::GUILD_CREATE
+            | EventTypeFlags::CHANNEL_CREATE
+            | EventTypeFlags::CHANNEL_DELETE
             | EventTypeFlags::VOICE_STATE_UPDATE
             | EventTypeFlags::VOICE_SERVER_UPDATE;
         loop {
@@ -307,20 +318,34 @@ impl Messages for Discord {
                     self.give_voice();
                     self.catch_up()?
                 }
-                // Where the user is in a voice channel already, the bot joins them.
                 Event::GuildCreate(guild) if Some(guild.id()) == self.state.guild => {
-                    if let (
-                        twilight_model::gateway::payload::incoming::GuildCreate::Available(guild),
-                        Some(voice),
-                    ) = (guild.as_ref(), self.voice.as_mut())
-                    {
-                        let channel = guild
-                            .voice_states
+                    if let GuildCreate::Available(guild) = guild.as_ref() {
+                        self.voice_channels = guild
+                            .channels
                             .iter()
-                            .find(|state| Some(state.user_id) == self.state.user)
-                            .and_then(|state| state.channel_id);
-                        voice.follow(channel);
+                            .filter(|channel| voiced(channel.kind))
+                            .map(|channel| channel.id)
+                            .collect();
+                        // Where the user is in a voice channel already, the bot joins them.
+                        if let Some(voice) = &mut self.voice {
+                            let channel = guild
+                                .voice_states
+                                .iter()
+                                .find(|state| Some(state.user_id) == self.state.user)
+                                .and_then(|state| state.channel_id);
+                            voice.follow(channel);
+                        }
                     }
+                    Vec::new()
+                }
+                Event::ChannelCreate(channel) if channel.guild_id == self.state.guild => {
+                    if voiced(channel.kind) {
+                        self.voice_channels.insert(channel.id);
+                    }
+                    Vec::new()
+                }
+                Event::ChannelDelete(channel) => {
+                    self.voice_channels.remove(&channel.id);
                     Vec::new()
                 }
                 Event::VoiceStateUpdate(update)
@@ -341,7 +366,7 @@ impl Messages for Discord {
                         entries.push(self.connect(&message)?);
                         self.give_voice();
                     }
-                    entries.extend(take(&mut self.state, vec![message.0]));
+                    entries.extend(take(&mut self.state, &self.voice_channels, vec![message.0]));
                     entries
                 }
                 _ => Vec::new(),
@@ -355,7 +380,13 @@ impl Messages for Discord {
 
 impl Reactions for Discord {
     fn react(&self, message: &str, emoji: &str) -> Result<()> {
-        let channel = self.channel()?;
+        let (channel, message) = match message.split_once('/') {
+            Some((channel, message)) => (
+                channel.parse().context("not a Discord channel id")?,
+                message,
+            ),
+            None => (self.channel()?, message),
+        };
         let message = message.parse().context("not a Discord message id")?;
         // Reactions add up on Discord, so the agent's earlier ones go first.
         for reaction in self.rest.message(channel, message)?.reactions {
@@ -382,12 +413,26 @@ impl Messenger for Discord {
     }
 }
 
-/// Takes in messages: the user's in the chat become entries, each once.
-pub fn take(state: &mut State, mut messages: Vec<Message>) -> Vec<Entry> {
+/// Whether a channel is a voice channel, which has a chat of its own.
+fn voiced(kind: ChannelType) -> bool {
+    matches!(kind, ChannelType::GuildVoice | ChannelType::GuildStageVoice)
+}
+
+/// Takes in messages: the user's in the chat, and in the voice channels' own chats,
+/// become entries, each once.
+/// A message in a voice channel's chat has the id `<channel>/<message>`, since replies and
+/// reactions go to the chat otherwise.
+pub fn take(
+    state: &mut State,
+    voice_channels: &HashSet<Id<ChannelMarker>>,
+    mut messages: Vec<Message>,
+) -> Vec<Entry> {
     messages.sort_by_key(|message| message.id);
     let mut entries = Vec::new();
     for message in messages {
-        if state.channel != Some(message.channel_id) || state.last >= Some(message.id) {
+        let in_chat = state.channel == Some(message.channel_id);
+        let in_voice = state.channel.is_some() && voice_channels.contains(&message.channel_id);
+        if !(in_chat || in_voice) || state.last >= Some(message.id) {
             continue;
         }
         state.last = Some(message.id);
@@ -405,7 +450,11 @@ pub fn take(state: &mut State, mut messages: Vec<Message>) -> Vec<Entry> {
                     .clone()
                     .unwrap_or(message.author.name.clone()),
             ),
-            message: Some(message.id.to_string()),
+            message: Some(if in_chat {
+                message.id.to_string()
+            } else {
+                format!("{}/{}", message.channel_id, message.id)
+            }),
             spoken: false,
             text: text_of(&message),
         });

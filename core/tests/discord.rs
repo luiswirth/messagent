@@ -3,6 +3,8 @@ use messagent::{
     discord::{Settings, State, take},
     messenger,
 };
+use std::collections::HashSet;
+
 use serde_json::json;
 use twilight_model::{channel::Message, id::Id};
 
@@ -72,7 +74,7 @@ fn only_the_users_messages_in_the_dm_get_through_each_once() {
             }),
         ),
     ];
-    let entries = take(&mut state, messages);
+    let entries = take(&mut state, &HashSet::new(), messages);
     let texts: Vec<_> = entries.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(
         texts,
@@ -86,7 +88,14 @@ fn only_the_users_messages_in_the_dm_get_through_each_once() {
     assert_eq!(entries[0].name.as_deref(), Some("Luis"));
     assert_eq!(entries[0].message.as_deref(), Some("11"));
     assert_eq!(state.last, Some(Id::new(15)));
-    assert!(take(&mut state, vec![text(13, CHAT, USER, "second")]).is_empty());
+    assert!(
+        take(
+            &mut state,
+            &HashSet::new(),
+            vec![text(13, CHAT, USER, "second")]
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -95,7 +104,7 @@ fn nothing_gets_through_before_the_dm_is_open() {
         user: Some(Id::new(USER)),
         ..State::default()
     };
-    assert!(take(&mut state, vec![text(1, CHAT, USER, "hi")]).is_empty());
+    assert!(take(&mut state, &HashSet::new(), vec![text(1, CHAT, USER, "hi")]).is_empty());
 }
 
 #[test]
@@ -119,4 +128,25 @@ fn config_survives_a_round_trip() {
             .contains("[discord]")
     );
     assert_eq!(Config::load(&paths).unwrap(), config);
+}
+
+#[test]
+fn the_users_messages_in_a_voice_channels_chat_get_through_with_their_channel() {
+    const VOICE: u64 = 9;
+    let mut state = connected();
+    let voice = HashSet::from([Id::new(VOICE)]);
+    let entries = take(
+        &mut state,
+        &voice,
+        vec![
+            text(21, VOICE, USER, "typed in the call"),
+            text(22, 8, USER, "another channel"),
+            text(23, CHAT, USER, "in the chat"),
+        ],
+    );
+    let ids: Vec<_> = entries
+        .iter()
+        .map(|e| e.message.as_deref().unwrap())
+        .collect();
+    assert_eq!(ids, ["9/21", "23"]);
 }
