@@ -3,7 +3,8 @@
 Message and call your agent in a messaging app, like a friend.
 "messagent" is the name, Luis's decision.
 The flagship for now, Luis's decision: "the messenger chat is soooo simple. everybody will udnerstand it."
-It replaces polylogue's `chat`, and may subsume voice mode.
+It may subsume voice mode.
+It does not replace polylogue's `chat`, since it doesn't build on polylogue, Luis's decision: `chat` stays, as a reference.
 A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now, Luis's decision.
 
 ## Decided
@@ -15,6 +16,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - The capabilities are traits, Luis's decision: `Messages`, finished pieces of content in the modalities the messenger carries,
   and `Calls`, live audio both ways.
   A voice note is a message with audio content.
+- The agent uses messagent through a command line, `messagent`, its one interface, Luis's decision:
+  "CLI are the way to go in gerneral for harness-agnostic things."
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
 - It runs on the user's machine, where their agent already runs, Luis's decision.
   We host as little as possible, for cost and maintenance.
