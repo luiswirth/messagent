@@ -50,10 +50,11 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - A background process on the user's machine fetches the messages and stores them, Luis's decision:
   a bot gets no chat history, and Telegram keeps a message for it only until fetched, at most 24 hours.
   It need not always run, and may sleep with the laptop, but it must fetch each message within 24 hours.
-  After it slept longer, a notice reaches the user that messages may have been lost before reaching the agent.
-  Not necessarily through the bot's chat, Luis's point: the user may not look at it, where the agent works in the background.
+  After it slept longer, it informs the agent that messages may have been lost, and the agent lets the user know as it sees fit, Luis's decision.
 - Claude Code is woken through channels, Luis's decision.
-- Waking a harness is a part of its own, apart from the core, Luis's decision, so the core stays harness-agnostic.
+- Waking a harness is a part of its own, apart from the core, Luis's decision, so the core stays harness-agnostic:
+  the core runs a wake command set at setup, and a user with a custom setup sets their own.
+- The text loop is tested with a bot made in BotFather, Luis's decision; onboarding through managed bots comes after.
 - Only the user gets through by default, and only the user can allow other people to speak to the agent, Luis's decision.
 
 - One messenger chat is one conversation, Luis's decision:
@@ -62,6 +63,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - The focus is only what the messenger needs, Luis's decision.
 
 ## Open
+
+- How the standard ways of waking harnesses, such as Claude Code, are provided: maybe this is what senses and impulses become.
 
 - Handing over the phone, for the future, Luis's decision: the messagent puts another agent on the chat, which answers through the same bot until it hands back.
 
