@@ -59,7 +59,11 @@ pub struct State {
     pub channel: Option<Id<ChannelMarker>>,
     /// The server of the chat.
     pub guild: Option<Id<GuildMarker>>,
-    /// The newest message of the DM taken in.
+    /// Where the agent's messages go: the channel of the user's latest message,
+    /// the chat or a voice channel's own chat.
+    #[serde(default)]
+    pub reply: Option<Id<ChannelMarker>>,
+    /// The newest message taken in.
     pub last: Option<Id<MessageMarker>>,
 }
 
@@ -296,7 +300,17 @@ impl Messages for Discord {
         if format.is_some() {
             bail!("Discord has one format, its Markdown, always on: send without a format");
         }
-        Ok(self.rest.send(self.channel()?, message)?.id.to_string())
+        let channel = match self.state.reply {
+            Some(channel) => channel,
+            None => self.channel()?,
+        };
+        let sent = self.rest.send(channel, message)?;
+        // Outside the chat, the id names its channel, as `take` writes it.
+        Ok(if Some(channel) == self.state.channel {
+            sent.id.to_string()
+        } else {
+            format!("{channel}/{}", sent.id)
+        })
     }
 
     fn receive(&mut self) -> Result<Vec<Entry>> {
@@ -420,8 +434,8 @@ fn voiced(kind: ChannelType) -> bool {
 
 /// Takes in messages: the user's in the chat, and in the voice channels' own chats,
 /// become entries, each once.
-/// A message in a voice channel's chat has the id `<channel>/<message>`, since replies and
-/// reactions go to the chat otherwise.
+/// A message in a voice channel's chat has the id `<channel>/<message>`, so that reactions find it.
+/// The agent's messages go where the user last wrote.
 pub fn take(
     state: &mut State,
     voice_channels: &HashSet<Id<ChannelMarker>>,
@@ -439,6 +453,7 @@ pub fn take(
         if Some(message.author.id) != state.user {
             continue;
         }
+        state.reply = Some(message.channel_id);
         entries.push(Entry {
             time: Timestamp::from_microsecond(message.timestamp.as_micros())
                 .unwrap_or_else(|_| Timestamp::now()),

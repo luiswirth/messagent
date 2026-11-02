@@ -49,6 +49,7 @@ fn connected() -> State {
         user: Some(Id::new(USER)),
         channel: Some(Id::new(CHAT)),
         guild: Some(Id::new(1)),
+        reply: None,
         last: None,
     }
 }
@@ -149,4 +150,11 @@ fn the_users_messages_in_a_voice_channels_chat_get_through_with_their_channel() 
         .map(|e| e.message.as_deref().unwrap())
         .collect();
     assert_eq!(ids, ["9/21", "23"]);
+    assert_eq!(state.reply, Some(Id::new(CHAT)));
+    take(
+        &mut state,
+        &voice,
+        vec![text(24, VOICE, USER, "back in the call")],
+    );
+    assert_eq!(state.reply, Some(Id::new(VOICE)));
 }
