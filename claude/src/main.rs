@@ -27,8 +27,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
-    /// The wake command: delivers the unread messages to the session,
+    /// The wake command: tells the session that unread messages wait,
     /// through its channel while it runs, by resuming it in this directory while it doesn't.
+    /// The agent reads them itself, so that a message counts as seen only once it has,
+    /// and a wake that fails leaves them unread.
     Wake {
         session: String,
         /// Further arguments for `claude` when it resumes the session, such as `--permission-mode`.
@@ -40,9 +42,11 @@ enum Action {
     Channel,
 }
 
-const INSTRUCTIONS: &str = "Messages from the user's messenger chat arrive here, \
-    as `messagent read` prints them, and count as read. \
+const INSTRUCTIONS: &str = "You are told here when the user's messenger chat has new messages. \
+    `messagent read` prints them and marks them seen, which the user sees. \
     Only what you send with `messagent send` reaches the user.";
+
+const WAITING: &str = "New messages wait in the messenger chat: run `messagent read`.";
 
 fn main() -> Result<()> {
     match Cli::parse().action {
@@ -65,19 +69,19 @@ fn socket() -> Result<PathBuf> {
     .join("channel.sock"))
 }
 
-/// The unread messages, marked read, empty where there are none.
-fn unread() -> Result<String> {
+/// Whether unread messages wait, which leaves them unread.
+fn waiting() -> Result<bool> {
     let output = Command::new("messagent")
-        .arg("read")
+        .args(["read", "--peek"])
         .output()
-        .context("can't run `messagent read`")?;
+        .context("can't run `messagent read --peek`")?;
     if !output.status.success() {
         bail!(
-            "`messagent read` failed: {}",
+            "`messagent read --peek` failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    Ok(String::from_utf8(output.stdout)?.trim_end().to_string())
+    Ok(!output.stdout.trim_ascii().is_empty())
 }
 
 #[derive(Deserialize)]
@@ -107,11 +111,10 @@ fn wake(session: &str, claude: &[String]) -> Result<()> {
         stream.write_all(b"wake\n")?;
         return Ok(());
     }
-    let messages = unread()?;
-    if messages.is_empty() {
+    if !waiting()? {
         return Ok(());
     }
-    let prompt = format!("{INSTRUCTIONS}\n\n{messages}");
+    let prompt = format!("{INSTRUCTIONS}\n\n{WAITING}");
     let status = Command::new("claude")
         .args(["--print", "--resume", session])
         .env(RESUMED, "1")
@@ -134,8 +137,7 @@ fn emit(stdout: &Mutex<io::Stdout>, message: Value) -> Result<()> {
 }
 
 fn deliver(stdout: &Mutex<io::Stdout>) -> Result<()> {
-    let messages = unread()?;
-    if messages.is_empty() {
+    if !waiting()? {
         return Ok(());
     }
     emit(
@@ -143,13 +145,13 @@ fn deliver(stdout: &Mutex<io::Stdout>) -> Result<()> {
         json!({
             "jsonrpc": "2.0",
             "method": "notifications/claude/channel",
-            "params": { "content": messages },
+            "params": { "content": WAITING },
         }),
     )
 }
 
 /// Set for a resumed session, which starts the channel too but ignores what it sends:
-/// a channel there would mark messages read that never reach the agent.
+/// the prompt already tells the agent that messages wait.
 const RESUMED: &str = "MESSAGENT_CLAUDE_RESUMED";
 
 fn channel() -> Result<()> {

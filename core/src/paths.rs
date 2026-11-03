@@ -3,6 +3,7 @@ use std::{env, ffi::OsString, path::PathBuf};
 use anyhow::{Context, Result, bail};
 
 /// Where messagent keeps its files on the user's machine.
+#[derive(Clone)]
 pub struct Paths {
     pub config: PathBuf,
     pub state: PathBuf,

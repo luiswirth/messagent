@@ -45,8 +45,13 @@ enum Action {
     /// since Telegram keeps a message for 24 hours.
     Watch,
     /// Print the messages not read yet, and mark them read.
-    /// Where the messenger has reactions, the user sees 👀 on each, since the agent has now seen it.
-    Read,
+    /// Where the messenger has reactions, the user sees 👀 on each, since the agent has now seen it,
+    /// so only the agent itself reads.
+    Read {
+        /// Print them without marking them read, for a wake command that checks whether any wait.
+        #[arg(long)]
+        peek: bool,
+    },
     /// Send the user a message.
     Send {
         text: String,
@@ -97,7 +102,13 @@ fn main() -> Result<()> {
         } => setup(&paths, messenger, wake, speech),
         Action::Speak { text } => calls::speak(&paths.speak_socket(), &text),
         Action::Watch => watch::watch(&paths),
-        Action::Read => read(&paths),
+        Action::Read { peek: false } => read(&paths),
+        Action::Read { peek: true } => {
+            for entry in Log::new(&paths).peek()? {
+                println!("{}", entry.render());
+            }
+            Ok(())
+        }
         Action::Send { text, format } => send(&paths, &text, format.as_deref()),
         Action::React { emoji, message } => react(&paths, &emoji, message),
     }

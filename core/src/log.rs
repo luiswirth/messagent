@@ -116,6 +116,15 @@ impl Log {
 
     /// The entries for the agent past its cursor, which then moves past them.
     pub fn read(&self) -> Result<Vec<Entry>> {
+        self.past_cursor(true)
+    }
+
+    /// The entries for the agent past its cursor, which stays.
+    pub fn peek(&self) -> Result<Vec<Entry>> {
+        self.past_cursor(false)
+    }
+
+    fn past_cursor(&self, advance: bool) -> Result<Vec<Entry>> {
         let mut file = self.open()?;
         let start = match fs::read_to_string(&self.cursor) {
             Ok(text) => text.trim().parse().context("the read cursor is corrupt")?,
@@ -126,8 +135,10 @@ impl Log {
         let mut text = String::new();
         file.read_to_string(&mut text)?;
         let entries = parse(&text)?;
-        let end = start + text.len() as u64;
-        write_private(&self.cursor, end.to_string().as_bytes())?;
+        if advance {
+            let end = start + text.len() as u64;
+            write_private(&self.cursor, end.to_string().as_bytes())?;
+        }
         Ok(entries
             .into_iter()
             .filter(|entry| entry.from != Party::Agent)

@@ -66,6 +66,16 @@ fn read_returns_each_entry_once_without_the_agents() {
 }
 
 #[test]
+fn peek_leaves_entries_unread() {
+    let log = Log::new(&paths());
+    log.append(&[entry(Party::User, "hi")]).unwrap();
+    assert_eq!(log.peek().unwrap().len(), 1);
+    assert_eq!(log.peek().unwrap().len(), 1);
+    assert_eq!(log.read().unwrap().len(), 1);
+    assert!(log.peek().unwrap().is_empty());
+}
+
+#[test]
 fn only_the_users_private_messages_get_through() {
     let mut state = connected();
     let updates = vec![
