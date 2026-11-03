@@ -80,6 +80,7 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - Claude Code is woken through channels, Luis's decision.
 - Waking a harness is a part of its own, apart from the core, Luis's decision, so the core stays harness-agnostic:
   the core runs a wake command set at setup, and a user with a custom setup sets their own.
+- When waking the agent fails, messagent itself puts an error message in the chat, Luis's decision, since no agent is there to tell the user.
 - The text loop is tested with a bot made in BotFather, Luis's decision; onboarding through managed bots comes after.
 - Only the user gets through by default, and only the user can allow other people to speak to the agent, Luis's decision.
 - Whoever controls the user's messenger account controls the agent; the answer is to keep the accounts safe, and every user is made aware of it, Luis's decision.
