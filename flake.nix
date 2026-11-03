@@ -30,8 +30,6 @@
         bacon
         cargo-edit
         just
-        # Discord's voice is Opus, which songbird codes through libopus.
-        libopus
         pkg-config
       ];
   in {

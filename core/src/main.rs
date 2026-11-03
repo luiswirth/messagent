@@ -4,8 +4,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use jiff::Timestamp;
 use messagent::{
-    Config, Entry, Log, Party, Paths, calls,
-    discord::{self, Discord},
+    Config, Entry, Log, Party, Paths,
     messenger::{self, Settings},
     telegram::{self, Telegram},
     watch,
@@ -33,12 +32,6 @@ enum Action {
         /// It runs one at a time: messages arriving during a run lead to one more run after it.
         #[arg(long, default_value = "")]
         wake: String,
-        /// The speech engine for calls, where the messenger has them: a shell command `messagent watch` runs
-        /// while a call lasts. It takes one JSON line per request on stdin and answers in JSON lines:
-        /// `{"transcribe": "<wav path>"}` gets `{"text": …}`; `{"speak": "<text>"}` gets one `{"wav": "<path>"}`
-        /// per sentence, then `{"end": true}`; a failure gets `{"error": …}`.
-        #[arg(long)]
-        speech: Option<String>,
     },
     /// Fetch the messages and write them to the log, then run the wake command.
     /// It runs in the background, and must run at least once a day,
@@ -58,15 +51,10 @@ enum Action {
         /// The messenger's own formatting, passed to it as is, with the text unsplit.
         /// For Telegram, its parse mode: `HTML` or `MarkdownV2`,
         /// as https://core.telegram.org/bots/api#formatting-options describes.
-        /// Discord takes none: its one format, Markdown, is always on.
         /// Without one, plain text.
         #[arg(long)]
         format: Option<String>,
     },
-    /// Say something aloud in the call with the user, where the messenger has calls.
-    /// It returns once the words are on their way; if the user speaks over them,
-    /// `messagent read` tells how much they heard.
-    Speak { text: String },
     /// React to a message of the user with an emoji, which replaces the agent's earlier one, such as the 👀.
     /// Telegram takes only some emoji, such as 👍 ❤ 🔥 🎉 😁 🤔 👌.
     React {
@@ -85,22 +73,12 @@ struct Choice {
     /// It prints a link: whoever opens it and taps Start, while `messagent watch` runs, becomes the user.
     #[arg(long, value_name = "TOKEN_FILE")]
     telegram: Option<PathBuf>,
-    /// Discord, through a bot: a file holding the bot's token, from the Developer Portal.
-    /// The owner of the bot's application is the user. It prints a link that adds the bot to a server:
-    /// the text channel there where the user first writes, while `messagent watch` runs, becomes the chat.
-    #[arg(long, value_name = "TOKEN_FILE")]
-    discord: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
     let paths = Paths::from_env()?;
     match Cli::parse().action {
-        Action::Setup {
-            messenger,
-            wake,
-            speech,
-        } => setup(&paths, messenger, wake, speech),
-        Action::Speak { text } => calls::speak(&paths.speak_socket(), &text),
+        Action::Setup { messenger, wake } => setup(&paths, messenger, wake),
         Action::Watch => watch::watch(&paths),
         Action::Read { peek: false } => read(&paths),
         Action::Read { peek: true } => {
@@ -114,15 +92,15 @@ fn main() -> Result<()> {
     }
 }
 
-fn setup(paths: &Paths, choice: Choice, wake: String, speech: Option<String>) -> Result<()> {
+fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
     let token = |file: &PathBuf| -> Result<String> {
         Ok(fs::read_to_string(file)
             .with_context(|| format!("can't read {}", file.display()))?
             .trim()
             .to_string())
     };
-    let (messenger, next) = match (choice.telegram, choice.discord) {
-        (Some(file), _) => {
+    let (messenger, next) = match choice.telegram {
+        Some(file) => {
             let settings = telegram::Settings {
                 token: token(&file)?,
             };
@@ -134,27 +112,9 @@ fn setup(paths: &Paths, choice: Choice, wake: String, speech: Option<String>) ->
                 ),
             )
         }
-        (None, Some(file)) => {
-            let settings = discord::Settings {
-                token: token(&file)?,
-            };
-            let (link, owner) = Discord::open(&settings, paths)?.setup()?;
-            (
-                Settings::Discord(settings),
-                format!(
-                    "The user is {owner}, the owner of the bot's application. They add the bot to a server of theirs with\n{link}\n\
-                     While `messagent watch` runs, the text channel there where they first write becomes the chat."
-                ),
-            )
-        }
-        (None, None) => unreachable!("clap requires one"),
+        None => unreachable!("clap requires one"),
     };
-    Config {
-        wake,
-        speech,
-        messenger,
-    }
-    .save(paths)?;
+    Config { wake, messenger }.save(paths)?;
     println!("{next}");
     Ok(())
 }

@@ -1,15 +1,11 @@
 //! What a messenger can do, as capabilities: each messenger connects with the ones it has.
 //! A message's id is the messenger's own, kept as an opaque string.
 
-use std::sync::mpsc;
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     Entry, Paths,
-    calls::Call,
-    discord::{self, Discord},
     telegram::{self, Telegram},
 };
 
@@ -40,11 +36,6 @@ pub trait Messenger: Messages {
     fn reactions(&self) -> Option<&dyn Reactions> {
         None
     }
-
-    /// Calls with the user, each handed over as it starts; taken once, by `watch`.
-    fn calls(&mut self) -> Option<mpsc::Receiver<Call>> {
-        None
-    }
 }
 
 /// The messenger set up, with its part of the config, a section named after it.
@@ -52,13 +43,11 @@ pub trait Messenger: Messages {
 #[serde(rename_all = "lowercase")]
 pub enum Settings {
     Telegram(telegram::Settings),
-    Discord(discord::Settings),
 }
 
 pub fn open(settings: &Settings, paths: &Paths) -> Result<Box<dyn Messenger>> {
     Ok(match settings {
         Settings::Telegram(settings) => Box::new(Telegram::open(settings, paths)?),
-        Settings::Discord(settings) => Box::new(Discord::open(settings, paths)?),
     })
 }
 

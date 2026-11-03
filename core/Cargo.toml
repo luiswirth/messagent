@@ -5,16 +5,10 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-trait.workspace = true
 clap.workspace = true
 jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-songbird.workspace = true
-symphonia.workspace = true
-tokio.workspace = true
 toml.workspace = true
-twilight-gateway.workspace = true
-twilight-model.workspace = true
 ureq.workspace = true
 

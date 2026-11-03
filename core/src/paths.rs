@@ -65,11 +65,6 @@ impl Paths {
         self.state.join(format!("{messenger}.json"))
     }
 
-    /// Where `messagent watch` takes what the agent says into a call.
-    pub fn speak_socket(&self) -> PathBuf {
-        self.state.join("speak.sock")
-    }
-
     pub fn watch_lock(&self) -> PathBuf {
         self.state.join("watch.lock")
     }

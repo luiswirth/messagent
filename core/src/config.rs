@@ -12,10 +12,6 @@ pub struct Config {
     /// A shell command run after new entries reach the log, empty for none.
     #[serde(default)]
     pub wake: String,
-    /// The speech engine for calls, a shell command, unset for none:
-    /// it runs while a call lasts and answers JSON lines, as `messagent::calls` describes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub speech: Option<String>,
     #[serde(flatten)]
     pub messenger: messenger::Settings,
 }

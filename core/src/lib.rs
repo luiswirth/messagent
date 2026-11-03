@@ -1,6 +1,4 @@
-pub mod calls;
 pub mod config;
-pub mod discord;
 pub mod log;
 pub mod messenger;
 pub mod paths;

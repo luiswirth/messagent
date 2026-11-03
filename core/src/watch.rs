@@ -12,7 +12,7 @@ use std::{
 use anyhow::Result;
 use jiff::Timestamp;
 
-use crate::{Config, Entry, Log, Party, Paths, calls, messenger};
+use crate::{Config, Entry, Log, Party, Paths, messenger};
 
 /// What the user reads when their agent can't be woken, since no agent is there to tell them.
 pub const WAKE_FAILED: &str =
@@ -20,7 +20,6 @@ pub const WAKE_FAILED: &str =
 
 /// Runs the wake command, one run at a time:
 /// wakes asked for during a run become one more run after it.
-#[derive(Clone)]
 pub struct Waker {
     sender: Option<mpsc::Sender<()>>,
 }
@@ -91,19 +90,6 @@ pub fn watch(paths: &Paths) -> Result<()> {
         }
     };
     let waker = Waker::spawn(config.wake.clone(), failed);
-    if let Some(calls) = messenger.calls() {
-        let (engine, socket, log, waker) = (
-            config.speech.clone(),
-            paths.speak_socket(),
-            Log::new(paths),
-            waker.clone(),
-        );
-        thread::spawn(move || {
-            if let Err(error) = calls::serve(calls, engine, socket, log, waker) {
-                eprintln!("messagent watch: calls: {error:#}");
-            }
-        });
-    }
     loop {
         let entries: Vec<Entry> = messenger
             .receive()?
