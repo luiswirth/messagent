@@ -187,3 +187,34 @@ fn config_survives_a_round_trip() {
     config.save(&paths).unwrap();
     assert_eq!(Config::load(&paths).unwrap(), config);
 }
+
+#[test]
+fn a_failing_wake_is_reported_once_per_streak() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let flag = paths().state;
+    std::fs::create_dir_all(&flag).unwrap();
+    let flag = flag.join("fail");
+    let reported = Arc::new(AtomicUsize::new(0));
+    let counter = reported.clone();
+    let waker =
+        messagent::watch::Waker::spawn(format!("test ! -e {}", flag.display()), move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+        });
+    let settle = || std::thread::sleep(std::time::Duration::from_millis(200));
+    std::fs::write(&flag, "").unwrap();
+    for _ in 0..3 {
+        waker.wake();
+        settle();
+    }
+    assert_eq!(reported.load(Ordering::SeqCst), 1);
+    std::fs::remove_file(&flag).unwrap();
+    waker.wake();
+    settle();
+    std::fs::write(&flag, "").unwrap();
+    waker.wake();
+    settle();
+    assert_eq!(reported.load(Ordering::SeqCst), 2);
+}
