@@ -9,6 +9,9 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 
 ## Decided
 
+- It is a product for other people, for Ag², before it is for Luis, and it is zero-setup and free, Luis's decision:
+  anything that costs the user money or needs steps on their side is a non-starter.
+- It is the actual phone experience, Luis's decision: Discord is no fit as the main messenger, since it is not a phone messenger people are used to.
 - The UI is the messenger: no UI of our own, everything is infrastructure and backend, Luis's decision.
 - It is built without polylogue for now, Luis's decision:
   the messenger chat is already the shared room, and with no relay a polylogue session would only be a local log between two programs.
