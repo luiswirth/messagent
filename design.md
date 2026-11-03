@@ -33,8 +33,8 @@ A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now,
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
 - It runs on the user's machine, where their agent already runs, Luis's decision.
   We host as little as possible, for cost and maintenance.
-- Discord next, for calls, as a bot in a voice channel, with its chat too, Luis's decision: "sure let's go discord for now maybe."
-  Everything is on the user's own server, as with a friend group's, Luis's decision: a text channel for writing, a voice channel for calls, no DM.
+- Discord was tried for calls and dropped, Luis's decision: it is not the phone experience, and every user would make an app by hand.
+  The try is in the history of messagent#1.
 - Calls use voice's core, Luis's decision: conversational voice mode, with dictation and read-aloud as its special cases, is a standalone component without transport or UI,
   and messagent, like voice's browser page with polylogue, only uses it.
   messagent's own speech layer is a stopgap until then.
