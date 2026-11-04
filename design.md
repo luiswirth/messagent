@@ -48,8 +48,8 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   Phone numbers for an agent's own account wait until a Telegram bot's limits are reached.
 - Onboarding creates the bot, through Telegram's managed bots, Luis's decision.
   The manager bot is ours to host, kept tiny.
-  It could run on Telegram Serverless, Telegram's hosting for bot code, so that we host nothing.
-  The user's own bot can't: a Serverless bot's updates and database are out of reach of the user's machine.
+  It runs on lwirth-cloud, where everything public of Ag² runs, Luis's decision.
+  Telegram Serverless can't host it: a machine can't reach a Serverless bot from outside, so it couldn't hand the token over.
   The user connects a phone by scanning a QR code, or by typing a code once.
 - We are trustworthy to the user and to the user's agent, Luis's decision.
   Agents run in terminals and in GUIs alike, so onboarding assumes neither.
