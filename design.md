@@ -5,7 +5,7 @@ Message and call your agent in a messaging app, like a friend.
 The flagship for now, Luis's decision: "the messenger chat is soooo simple. everybody will udnerstand it."
 It may subsume voice mode.
 It does not replace polylogue's `chat`, since it doesn't build on polylogue, Luis's decision: `chat` stays, as a reference.
-A piece of Ag² (`~/dev/agentics`), in a repository of its own, private for now, Luis's decision.
+A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's decision.
 
 ## Decided
 
