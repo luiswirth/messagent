@@ -4,7 +4,7 @@ Message and call your agent in a messaging app, like a friend.
 "messagent" is the name, Luis's decision.
 The flagship for now, Luis's decision: "the messenger chat is soooo simple. everybody will udnerstand it."
 It may subsume voice mode.
-It does not replace polylogue's `chat`, since it doesn't build on polylogue, Luis's decision: `chat` stays, as a reference.
+polylogue's `chat` stays, as a reference, Luis's decision.
 A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's decision.
 
 ## Decided
@@ -13,8 +13,11 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   anything that costs the user money or needs steps on their side is a non-starter.
 - It is the actual phone experience, Luis's decision: Discord is no fit as the main messenger, since it is not a phone messenger people are used to.
 - The UI is the messenger: no UI of our own, everything is infrastructure and backend, Luis's decision.
-- It is built without polylogue for now, Luis's decision:
-  the messenger chat is already the shared room, and with no relay a polylogue session would only be a local log between two programs.
+- It is built on polylogue, Luis's decision (2026-11-06), replacing "without polylogue for now":
+  messagent is a program that takes part in a polylogue session and carries the messenger chat in and out,
+  as programs and engines are participants of a session (polylogue-project's `direction.md`).
+  It joins as the user; the agent joins the session as any agent does.
+- It uses the public relay by default, Luis's decision.
 - It is agnostic to the messenger, Luis's decision: each messenger connects on top with the capabilities it has.
 - It embraces how people already use each messenger, Luis's decision: "we should embrace the way people interact with messangers/platforms as much as possible."
 - The capabilities are traits, Luis's decision: `Messages`, finished pieces of content in the modalities the messenger carries,
@@ -22,27 +25,23 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   A voice note is a message with audio content.
 - Reacting to messages is an additional, optional capability of a messenger, Luis's decision.
 - A message the agent has read gets 👀, Luis's decision: "so it's not only received but acutally seen by an agent/llm."
-- The agent can react to the user's messages itself, with `messagent react`, Luis's decision.
+- The agent can react to the user's messages itself, Luis's decision, through an entry type of a reactions extension.
 - The agent writes in each messenger's own format, passed through raw, Luis's decision:
   "just let telegram do all the things. the agent should just write whatever each messager can accept. fully raw, full power, nothing custom".
 - Agents never have to keep calling something to show they are typing, Luis's decision.
   No typing indicator for now, Luis's decision: "not needed".
-- The agent uses messagent through a command line, `messagent`, its one interface, Luis's decision:
-  "CLI are the way to go in gerneral for harness-agnostic things."
+- The agent reaches messagent only through polylogue, a command line through curl or the `polylogue` script.
+  CLIs are preferred, Luis's decision: "CLI are the way to go in gerneral for harness-agnostic things."
   Every agent has a shell, Luis's decision: "a agent that cannot use a shell is not an agent in my definition".
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
 - It runs on the user's machine, where their agent already runs, Luis's decision.
   We host as little as possible, for cost and maintenance.
 - Discord was tried for calls and dropped, Luis's decision: it is not the phone experience, and every user would make an app by hand.
   The try is in the history of messagent#1.
-- Calls use voice's core, Luis's decision: conversational voice mode, with dictation and read-aloud as its special cases, is a standalone component without transport or UI,
-  and messagent, like voice's browser page with polylogue, only uses it.
-  messagent's own speech layer is a stopgap until then.
-- A call, as proposed by the builder and accepted by Luis: the agent joins the user's voice call.
-  What the user says reaches the agent as spoken entries in the same log; the agent speaks with `messagent speak`.
-- One log in time order, each entry tagged with the channel it came by, typed or spoken, Luis's decision.
-  The speech engine is a command set at setup, like the wake command, kept running while a call lasts, since loading its models takes seconds.
+- Calls use voice's core, Luis's decision: conversational voice mode, with dictation and read-aloud as its special cases, is a standalone component without transport or UI.
+  A call's voice is the voice engine, a participant of its own in the session, Luis's decision.
   Telegram bots can't call.
+- One log in time order, each entry tagged with the channel it came by, typed or spoken, Luis's decision: the session's log.
 - Telegram first, as a bot that is a contact of its own, with voice notes for now, Luis's decision.
   WhatsApp is not pursued for now: its setup and its rules on AI make it a hassle.
   Phone numbers for an agent's own account wait until a Telegram bot's limits are reached.
@@ -71,18 +70,16 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   Voice notes come later.
 - In Rust, Luis's decision.
 - The agent is wakeable, not always running, Luis's decision.
-  messagent keeps the messages, so the agent can also read them later:
+  The session keeps the messages, since a session lives until everyone has left, Luis's decision, so the agent can also read them later:
   whether it answers at once or only checks now and then is the user's choice,
   which suits an agent on a laptop that is sometimes closed.
-- A message wakes the agent through a small adapter per harness, Luis's decision.
-  Senses and impulses are only a way of thinking about it for now, conceptual and philosophy, not something built: the messenger is the focus.
+- Waking is solved outside polylogue, by impulse, Luis's decision: polylogue's blocking receive is the command an impulse waits on.
+  Until impulse exists, messagent has an interim waker that waits on that receive.
 - A background process on the user's machine fetches the messages and stores them, Luis's decision:
   a bot gets no chat history, and Telegram keeps a message for it only until fetched, at most 24 hours.
   It need not always run, and may sleep with the laptop, but it must fetch each message within 24 hours.
   After it slept longer, it informs the agent that messages may have been lost, and the agent lets the user know as it sees fit, Luis's decision.
-- Claude Code is woken through channels, Luis's decision.
-- Waking a harness is a part of its own, apart from the core, Luis's decision, so the core stays harness-agnostic:
-  the core runs a wake command set at setup, and a user with a custom setup sets their own.
+- Waking a harness stays apart from the core, Luis's decision, so the core stays harness-agnostic.
 - When waking the agent fails, messagent itself puts an error message in the chat, Luis's decision, since no agent is there to tell the user.
 - The text loop is tested with a bot made in BotFather, Luis's decision; onboarding through managed bots comes after.
 - Only the user gets through by default, and only the user can allow other people to speak to the agent, Luis's decision.
@@ -92,12 +89,9 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
 
 - One messenger chat is one conversation, Luis's decision:
   the private chat with the bot is one, and a group with the bot is a shared one of several people and agents.
-- No relay, Luis's decision: Telegram carries the traffic between phone and machine.
 - The focus is only what the messenger needs, Luis's decision.
 
 ## Open
-
-- How the standard ways of waking harnesses, such as Claude Code, are provided: maybe this is what senses and impulses become.
 
 - Handing over the phone, for the future, Luis's decision: the messagent puts another agent on the chat, which answers through the same bot until it hands back.
 
