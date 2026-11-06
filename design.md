@@ -30,7 +30,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   "just let telegram do all the things. the agent should just write whatever each messager can accept. fully raw, full power, nothing custom".
 - Agents never have to keep calling something to show they are typing, Luis's decision.
   No typing indicator for now, Luis's decision: "not needed".
-- The agent reaches messagent only through polylogue, a command line through curl or the `polylogue` script.
+- The agent reaches messagent only through polylogue, a command line through curl or the `agentwire` script.
   CLIs are preferred, Luis's decision: "CLI are the way to go in gerneral for harness-agnostic things."
   Every agent has a shell, Luis's decision: "a agent that cannot use a shell is not an agent in my definition".
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
@@ -73,7 +73,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   The session keeps the messages, since a session lives until everyone has left, Luis's decision, so the agent can also read them later:
   whether it answers at once or only checks now and then is the user's choice,
   which suits an agent on a laptop that is sometimes closed.
-- Waking is solved outside polylogue, by impulse, Luis's decision: polylogue's blocking receive is the command an impulse waits on.
+- Waking is solved outside polylogue, by impulse, Luis's decision: agentwire's blocking receive is the command an impulse waits on.
   Until impulse exists, messagent has an interim waker that waits on that receive.
 - A background process on the user's machine fetches the messages and stores them, Luis's decision:
   a bot gets no chat history, and Telegram keeps a message for it only until fetched, at most 24 hours.
