@@ -1,7 +1,8 @@
 use jiff::{SignedDuration, Timestamp};
 use messagent::{
-    Config, Entry, Log, Party, Paths,
-    messenger::{self, split},
+    Config, Paths,
+    bridge::Waker,
+    messenger::{self, Arrived, split},
     telegram::{MESSAGE_LIMIT, Settings, State, Update, take},
 };
 use serde_json::json;
@@ -40,43 +41,20 @@ fn text(id: i64, from: i64, text: &str) -> Update {
     update(id, from, "private", json!({ "text": text }))
 }
 
-fn entry(from: Party, text: &str) -> Entry {
-    Entry {
-        time: Timestamp::now(),
-        from,
-        name: None,
-        message: None,
-        spoken: false,
-        text: text.into(),
-    }
+/// The texts of what arrived, each marked by its kind.
+fn texts(arrived: &[Arrived]) -> Vec<String> {
+    arrived
+        .iter()
+        .map(|arrived| match arrived {
+            Arrived::Message { text, .. } => text.clone(),
+            Arrived::Notice(text) => format!("notice: {text}"),
+            Arrived::Stranger(stranger) => format!("stranger {}: {}", stranger.id, stranger.text),
+        })
+        .collect()
 }
 
 #[test]
-fn read_returns_each_entry_once_without_the_agents() {
-    let log = Log::new(&paths());
-    assert!(log.read().unwrap().is_empty());
-    log.append(&[entry(Party::User, "hi"), entry(Party::Agent, "hello")])
-        .unwrap();
-    let read: Vec<_> = log.read().unwrap().into_iter().map(|e| e.text).collect();
-    assert_eq!(read, ["hi"]);
-    assert!(log.read().unwrap().is_empty());
-    log.append(&[entry(Party::Messagent, "gap")]).unwrap();
-    assert_eq!(log.read().unwrap()[0].text, "gap");
-    assert_eq!(log.entries().unwrap().len(), 3);
-}
-
-#[test]
-fn peek_leaves_entries_unread() {
-    let log = Log::new(&paths());
-    log.append(&[entry(Party::User, "hi")]).unwrap();
-    assert_eq!(log.peek().unwrap().len(), 1);
-    assert_eq!(log.peek().unwrap().len(), 1);
-    assert_eq!(log.read().unwrap().len(), 1);
-    assert!(log.peek().unwrap().is_empty());
-}
-
-#[test]
-fn only_the_users_private_messages_get_through() {
+fn only_the_users_private_messages_get_through_and_strangers_are_kept_apart() {
     let mut state = connected();
     let updates = vec![
         text(1, USER, "mine"),
@@ -90,13 +68,15 @@ fn only_the_users_private_messages_get_through() {
         ),
     ];
     let fetched = take(&mut state, Timestamp::now(), updates);
-    let texts: Vec<_> = fetched.entries.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(
-        texts,
-        ["mine", "look\n[photo: messagent carries only text so far]"]
+        texts(&fetched.arrived),
+        [
+            "mine",
+            "stranger 7: a stranger's",
+            "look\n[photo: messagent carries only text so far]"
+        ]
     );
-    assert_eq!(fetched.entries[0].name.as_deref(), Some("Luis"));
-    assert_eq!(fetched.entries[0].message.as_deref(), Some("1"));
+    assert!(matches!(&fetched.arrived[0], Arrived::Message { id, .. } if id == "1"));
     assert_eq!(state.offset, 5);
 }
 
@@ -111,8 +91,7 @@ fn an_update_already_fetched_is_skipped() {
         Timestamp::now(),
         vec![text(1, USER, "old"), text(2, USER, "new")],
     );
-    assert_eq!(fetched.entries.len(), 1);
-    assert_eq!(fetched.entries[0].text, "new");
+    assert_eq!(texts(&fetched.arrived), ["new"]);
 }
 
 #[test]
@@ -122,11 +101,11 @@ fn a_gap_over_a_day_becomes_a_notice() {
         fetched: Some(now - SignedDuration::from_hours(23)),
         ..connected()
     };
-    assert!(take(&mut state, now, vec![]).entries.is_empty());
+    assert!(take(&mut state, now, vec![]).arrived.is_empty());
     state.fetched = Some(now - SignedDuration::from_hours(25));
     let fetched = take(&mut state, now, vec![text(1, USER, "back")]);
-    assert_eq!(fetched.entries[0].from, Party::Messagent);
-    assert_eq!(fetched.entries[1].text, "back");
+    assert!(matches!(&fetched.arrived[0], Arrived::Notice(text) if text.contains("may be lost")));
+    assert_eq!(texts(&fetched.arrived)[1], "back");
     assert_eq!(state.fetched, Some(now));
 }
 
@@ -149,8 +128,15 @@ fn the_start_link_connects_the_user_once() {
     assert_eq!(fetched.connected, Some(USER));
     assert_eq!(state.user, Some(USER));
     assert_eq!(state.code, None);
-    let texts: Vec<_> = fetched.entries.iter().map(|e| e.text.as_str()).collect();
-    assert_eq!(texts, ["Luis connected as the user.", "hi"]);
+    assert_eq!(
+        texts(&fetched.arrived),
+        [
+            "stranger 7: /start wrong",
+            "notice: Luis connected as the user.",
+            "stranger 7: /start secret",
+            "hi"
+        ]
+    );
 }
 
 #[test]
@@ -178,9 +164,12 @@ fn split_keeps_messages_within_the_limit() {
 fn config_survives_a_round_trip() {
     let paths = paths();
     let config = Config {
+        name: "luis".into(),
+        relay: Some("http://localhost:8791".into()),
         wake: "wake".into(),
         messenger: messenger::Settings::Telegram(Settings {
             token: "token".into(),
+            api: None,
         }),
     };
     config.save(&paths).unwrap();
@@ -198,10 +187,9 @@ fn a_failing_wake_is_reported_once_per_streak() {
     let flag = flag.join("fail");
     let reported = Arc::new(AtomicUsize::new(0));
     let counter = reported.clone();
-    let waker =
-        messagent::watch::Waker::spawn(format!("test ! -e {}", flag.display()), move || {
-            counter.fetch_add(1, Ordering::SeqCst);
-        });
+    let waker = Waker::spawn(format!("test ! -e {}", flag.display()), move || {
+        counter.fetch_add(1, Ordering::SeqCst);
+    });
     let settle = || std::thread::sleep(std::time::Duration::from_millis(200));
     std::fs::write(&flag, "").unwrap();
     for _ in 0..3 {

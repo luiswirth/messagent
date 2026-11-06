@@ -51,13 +51,14 @@ impl Paths {
         self.config.join("config.toml")
     }
 
-    pub fn log(&self) -> PathBuf {
-        self.state.join("log.jsonl")
+    /// The chat's polylogue session, as the bridge keeps it.
+    pub fn session(&self) -> PathBuf {
+        self.state.join("session.json")
     }
 
-    /// The byte offset in the log up to which the agent has read.
-    pub fn cursor(&self) -> PathBuf {
-        self.state.join("read")
+    /// The messages of strangers, which go no further than this file.
+    pub fn strangers(&self) -> PathBuf {
+        self.state.join("strangers.jsonl")
     }
 
     /// What a messenger's part keeps across runs, such as how far it has fetched.

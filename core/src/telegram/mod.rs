@@ -4,27 +4,34 @@ mod bot;
 
 use std::{fs, io::ErrorKind, path::PathBuf, thread, time::Duration};
 
-pub use bot::{Bot, MESSAGE_LIMIT, Message, Refusal, Update, User};
+pub use bot::{API, Bot, MESSAGE_LIMIT, Message, Refusal, Update, User};
 
 use anyhow::{Context, Result};
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::{
-    Entry, Party, Paths,
+    Paths,
     config::write_private,
-    log::local,
-    messenger::{CONNECTED, Messages, Messenger, Reactions, split},
+    messenger::{Arrived, CONNECTED, Messages, Messenger, Reactions, Stranger, split},
 };
+
+/// The type of a message in Telegram's own format: the body of the Bot API's `sendMessage`,
+/// passed to it as is, with the chat set by messagent.
+pub const NATIVE: &str = "application/vnd.polylogue.telegram.message+json";
 
 /// How long Telegram keeps an update that no one fetched.
 pub const KEPT: SignedDuration = SignedDuration::from_hours(24);
 
 /// Telegram's part of the config.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Settings {
     /// The bot's token, from BotFather.
     pub token: String,
+    /// The Bot API, if not Telegram's own, such as a fake one for tests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
 }
 
 /// What Telegram's part keeps across runs.
@@ -55,7 +62,7 @@ impl Telegram {
             Err(error) => return Err(error.into()),
         };
         Ok(Self {
-            bot: Bot::new(&settings.token),
+            bot: Bot::new(settings.api.as_deref().unwrap_or(API), &settings.token),
             state,
             file,
         })
@@ -93,12 +100,27 @@ impl Messages for Telegram {
         split(text, MESSAGE_LIMIT)
     }
 
-    fn send(&self, message: &str, format: Option<&str>) -> Result<String> {
-        let sent = self.bot.send_message(self.user()?, message, format)?;
+    fn send(&self, message: &str) -> Result<String> {
+        let sent = self.bot.send_message(self.user()?, message)?;
         Ok(sent.message_id.to_string())
     }
 
-    fn receive(&mut self) -> Result<Vec<Entry>> {
+    fn native(&self) -> &'static str {
+        NATIVE
+    }
+
+    fn send_native(&self, message: &[u8]) -> Result<String> {
+        let body: Map<String, Value> = serde_json::from_slice(message)
+            .context("a Telegram message is a JSON object, the body of sendMessage")?;
+        let sent = self.bot.send_raw(self.user()?, body)?;
+        Ok(sent.message_id.to_string())
+    }
+
+    fn connected(&self) -> bool {
+        self.state.user.is_some()
+    }
+
+    fn receive(&mut self) -> Result<Vec<Arrived>> {
         // Saved only now, after the last entries reached the log:
         // fetching from this offset confirms the updates before it, which Telegram then forgets.
         self.save()?;
@@ -109,11 +131,11 @@ impl Messages for Telegram {
                     let fetched = take(&mut self.state, Timestamp::now(), updates);
                     if let Some(user) = fetched.connected {
                         self.save()?;
-                        if let Err(error) = self.bot.send_message(user, CONNECTED, None) {
+                        if let Err(error) = self.bot.send_message(user, CONNECTED) {
                             eprintln!("messagent: can't confirm the connection: {error:#}");
                         }
                     }
-                    return Ok(fetched.entries);
+                    return Ok(fetched.arrived);
                 }
                 Err(error) => {
                     if let Some(refusal) = error.downcast_ref::<Refusal>()
@@ -146,27 +168,24 @@ impl Messenger for Telegram {
 /// What one fetch brought.
 #[derive(Debug, Default, PartialEq)]
 pub struct Fetched {
-    pub entries: Vec<Entry>,
+    pub arrived: Vec<Arrived>,
     /// The user who just connected with the setup code.
     pub connected: Option<i64>,
 }
 
 /// Takes in the updates of one fetch at `now`:
-/// the user's messages become entries, and a gap longer than Telegram keeps updates a notice.
+/// what the user and strangers sent, and a gap longer than Telegram keeps updates as a notice.
 pub fn take(state: &mut State, now: Timestamp, updates: Vec<Update>) -> Fetched {
     let mut fetched = Fetched::default();
     if let Some(last) = state.fetched
         && now.duration_since(last) > KEPT
     {
-        fetched.entries.push(Entry::notice(
-            now,
-            format!(
-                "Nothing was fetched from Telegram between {} and {}. \
-                 Telegram keeps messages for 24 hours, so messages from that time may be lost.",
-                local(last),
-                local(now),
-            ),
-        ));
+        fetched.arrived.push(Arrived::Notice(format!(
+            "Nothing was fetched from Telegram between {} and {}. \
+             Telegram keeps messages for 24 hours, so messages from that time may be lost.",
+            local(last),
+            local(now),
+        )));
     }
     state.fetched = Some(now);
     for update in updates {
@@ -177,34 +196,45 @@ pub fn take(state: &mut State, now: Timestamp, updates: Vec<Update>) -> Fetched 
         let Some(message) = update.message else {
             continue;
         };
-        if message.chat.kind != "private" {
-            continue;
-        }
         let Some(sender) = &message.from else {
             continue;
         };
+        // Only the user's private chat with the bot is the conversation so far.
+        let private = message.chat.kind == "private";
         match state.user {
-            Some(user) if user == sender.id => fetched.entries.push(Entry {
-                time: Timestamp::from_second(message.date).unwrap_or(now),
-                from: Party::User,
-                name: Some(sender.first_name.clone()),
-                message: Some(message.message_id.to_string()),
-                spoken: false,
-                text: text_of(&message),
-            }),
-            None if opens_with(&message, state.code.as_deref()) => {
+            Some(user) if user == sender.id => {
+                if private {
+                    fetched.arrived.push(Arrived::Message {
+                        id: message.message_id.to_string(),
+                        text: text_of(&message),
+                    });
+                }
+            }
+            None if private && opens_with(&message, state.code.as_deref()) => {
                 state.user = Some(sender.id);
                 state.code = None;
                 fetched.connected = Some(sender.id);
-                fetched.entries.push(Entry::notice(
-                    now,
-                    format!("{} connected as the user.", sender.first_name),
-                ));
+                fetched.arrived.push(Arrived::Notice(format!(
+                    "{} connected as the user.",
+                    sender.first_name
+                )));
             }
-            _ => {}
+            _ => fetched.arrived.push(Arrived::Stranger(Stranger {
+                time: Timestamp::from_second(message.date).unwrap_or(now),
+                id: sender.id.to_string(),
+                name: sender.first_name.clone(),
+                text: text_of(&message),
+            })),
         }
     }
     fetched
+}
+
+/// A time as the user reads it, in the machine's time zone.
+pub fn local(time: Timestamp) -> String {
+    time.to_zoned(jiff::tz::TimeZone::system())
+        .strftime("%Y-%m-%d %H:%M")
+        .to_string()
 }
 
 /// Whether the message is the start link's: `/start <code>`, or the code alone.

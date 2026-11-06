@@ -1,17 +1,16 @@
-use std::{fs, io::Read, path::PathBuf};
+use std::{fs, io::Read, path::PathBuf, process::ExitCode};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use jiff::Timestamp;
 use messagent::{
-    Config, Entry, Log, Party, Paths,
-    messenger::{self, Settings},
+    Config, Paths, bridge,
+    bridge::Session,
+    messenger::Settings,
     telegram::{self, Telegram},
-    watch,
 };
 
-/// The user's messenger chat with their agent.
-/// Every message of the chat is kept in a log on this machine.
+/// The user's messenger chat with their agent, as a polylogue session:
+/// messagent takes part in it as the user, and carries the chat in and out.
 /// Each messenger is a setup of its own: where a machine has several,
 /// `MESSAGENT_SETUP` names the one a command acts on.
 #[derive(Parser)]
@@ -28,41 +27,27 @@ enum Action {
     Setup {
         #[command(flatten)]
         messenger: Choice,
-        /// A shell command `messagent watch` runs after new messages arrive, to wake the agent.
-        /// It runs one at a time: messages arriving during a run lead to one more run after it.
+        /// The user's name in the session, such as `luis`.
+        #[arg(long)]
+        name: String,
+        /// The polylogue relay, if not the public one.
+        #[arg(long)]
+        relay: Option<String>,
+        /// A shell command `messagent watch` runs to wake the agent,
+        /// when an entry for it arrives while it is not receiving.
+        /// It runs one at a time: entries arriving during a run lead to one more run after it.
         #[arg(long, default_value = "")]
         wake: String,
     },
-    /// Fetch the messages and write them to the log, then run the wake command.
+    /// The bridge: carry the chat into its session and back, and wake the agent.
     /// It runs in the background, and must run at least once a day,
     /// since Telegram keeps a message for 24 hours.
     Watch,
-    /// Print the messages not read yet, and mark them read.
-    /// Where the messenger has reactions, the user sees 👀 on each, since the agent has now seen it,
-    /// so only the agent itself reads.
-    Read {
-        /// Print them without marking them read, for a wake command that checks whether any wait.
-        #[arg(long)]
-        peek: bool,
-    },
-    /// Send the user a message.
-    Send {
-        text: String,
-        /// The messenger's own formatting, passed to it as is, with the text unsplit.
-        /// For Telegram, its parse mode: `HTML` or `MarkdownV2`,
-        /// as https://core.telegram.org/bots/api#formatting-options describes.
-        /// Without one, plain text.
-        #[arg(long)]
-        format: Option<String>,
-    },
-    /// React to a message of the user with an emoji, which replaces the agent's earlier one, such as the 👀.
-    /// Telegram takes only some emoji, such as 👍 ❤ 🔥 🎉 😁 🤔 👌.
-    React {
-        emoji: String,
-        /// The message, by the `#` id `messagent read` shows; the user's latest without one.
-        #[arg(long)]
-        message: Option<String>,
-    },
+    /// Print the session's link, which the agent joins with,
+    /// once the user is connected.
+    Session,
+    /// Succeed if entries wait in the session that the agent has not read.
+    Waiting,
 }
 
 /// The messenger to connect, one of them.
@@ -75,24 +60,40 @@ struct Choice {
     telegram: Option<PathBuf>,
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<ExitCode> {
     let paths = Paths::from_env()?;
     match Cli::parse().action {
-        Action::Setup { messenger, wake } => setup(&paths, messenger, wake),
-        Action::Watch => watch::watch(&paths),
-        Action::Read { peek: false } => read(&paths),
-        Action::Read { peek: true } => {
-            for entry in Log::new(&paths).peek()? {
-                println!("{}", entry.render());
-            }
-            Ok(())
+        Action::Setup {
+            messenger,
+            name,
+            relay,
+            wake,
+        } => setup(&paths, messenger, name, relay, wake)?,
+        Action::Watch => bridge::watch(&paths)?,
+        Action::Session => {
+            let session = Session::load(&paths)?
+                .context("no session yet: it starts once the user is connected")?;
+            println!("{}", session.link);
         }
-        Action::Send { text, format } => send(&paths, &text, format.as_deref()),
-        Action::React { emoji, message } => react(&paths, &emoji, message),
+        Action::Waiting => {
+            let waiting = Session::load(&paths)?.is_some_and(|session| session.waiting());
+            return Ok(if waiting {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            });
+        }
     }
+    Ok(ExitCode::SUCCESS)
 }
 
-fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
+fn setup(
+    paths: &Paths,
+    choice: Choice,
+    name: String,
+    relay: Option<String>,
+    wake: String,
+) -> Result<()> {
     let token = |file: &PathBuf| -> Result<String> {
         Ok(fs::read_to_string(file)
             .with_context(|| format!("can't read {}", file.display()))?
@@ -103,6 +104,7 @@ fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
         Some(file) => {
             let settings = telegram::Settings {
                 token: token(&file)?,
+                api: None,
             };
             let link = Telegram::open(&settings, paths)?.setup(code()?)?;
             (
@@ -114,7 +116,15 @@ fn setup(paths: &Paths, choice: Choice, wake: String) -> Result<()> {
         }
         None => unreachable!("clap requires one"),
     };
-    Config { wake, messenger }.save(paths)?;
+    // A new user starts a new session.
+    fs::remove_file(paths.session()).ok();
+    Config {
+        name,
+        relay,
+        wake,
+        messenger,
+    }
+    .save(paths)?;
     println!("{next}");
     Ok(())
 }
@@ -124,66 +134,4 @@ fn code() -> Result<String> {
     let mut bytes = [0; 12];
     fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
-}
-
-fn read(paths: &Paths) -> Result<()> {
-    let entries = Log::new(paths).read()?;
-    for entry in &entries {
-        println!("{}", entry.render());
-    }
-    // The messages are read already, so a messenger that fails here only warns.
-    let messenger =
-        Config::load(paths).and_then(|config| messenger::open(&config.messenger, paths));
-    if let Err(error) = &messenger {
-        eprintln!("messagent: {error:#}");
-    }
-    if let Some(reactions) = messenger.as_ref().ok().and_then(|m| m.reactions()) {
-        for message in entries.iter().filter_map(|entry| entry.message.as_deref()) {
-            // The messages are read already, so a failed reaction only warns.
-            if let Err(error) = reactions.react(message, "👀") {
-                eprintln!("messagent: can't mark a message seen: {error:#}");
-            }
-        }
-    }
-    Ok(())
-}
-
-fn send(paths: &Paths, text: &str, format: Option<&str>) -> Result<()> {
-    let messenger = messenger::open(&Config::load(paths)?.messenger, paths)?;
-    let log = Log::new(paths);
-    // Formatted text is the messenger's to parse, so only plain text is split.
-    let messages = match format {
-        Some(_) => vec![text.to_string()],
-        None => messenger.split(text),
-    };
-    for message in messages {
-        let id = messenger.send(&message, format)?;
-        log.append(&[Entry {
-            time: Timestamp::now(),
-            from: Party::Agent,
-            name: None,
-            message: Some(id),
-            spoken: false,
-            text: message,
-        }])?;
-    }
-    Ok(())
-}
-
-fn react(paths: &Paths, emoji: &str, message: Option<String>) -> Result<()> {
-    let messenger = messenger::open(&Config::load(paths)?.messenger, paths)?;
-    let reactions = messenger
-        .reactions()
-        .context("this messenger has no reactions")?;
-    let message = match message {
-        Some(message) => message,
-        None => Log::new(paths)
-            .entries()?
-            .into_iter()
-            .rev()
-            .filter(|entry| entry.from == Party::User)
-            .find_map(|entry| entry.message)
-            .context("the user has sent no message yet")?,
-    };
-    reactions.react(&message, emoji)
 }

@@ -2,44 +2,73 @@
 //! A message's id is the messenger's own, kept as an opaque string.
 
 use anyhow::Result;
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Entry, Paths,
+    Paths,
     telegram::{self, Telegram},
 };
 
-/// Finished pieces of content between the user and the agent; text only so far.
+/// What arrives from the messenger.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Arrived {
+    /// A message of the user, which goes into the session as theirs.
+    Message { id: String, text: String },
+    /// A notice of messagent's own about the chat, such as that messages may be lost.
+    Notice(String),
+    /// A message of someone else, which is logged on this machine and goes no further.
+    Stranger(Stranger),
+}
+
+/// A message from someone other than the user, as one line of the strangers' log.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Stranger {
+    pub time: Timestamp,
+    /// The sender's id in the messenger.
+    pub id: String,
+    pub name: String,
+    pub text: String,
+}
+
+/// Finished pieces of content between the user and the others in the session; text only so far.
 pub trait Messages {
     /// Splits a text into messages the messenger carries.
     fn split(&self, text: &str) -> Vec<String>;
 
-    /// Sends one message to the user, and returns its id.
-    /// A format is the messenger's own, passed to it as is; without one, the message is plain text.
-    fn send(&self, message: &str, format: Option<&str>) -> Result<String>;
+    /// Sends one message of plain text to the user, and returns its id.
+    fn send(&self, message: &str) -> Result<String>;
 
-    /// Waits for what arrives next, as entries for the log:
-    /// the user's messages, and notices about the chat, such as messages that may be lost.
+    /// The type of an entry in the messenger's own format, which `send_native` passes to it raw.
+    fn native(&self) -> &'static str;
+
+    /// Sends a message in the messenger's own format, as is, and returns its id.
+    fn send_native(&self, message: &[u8]) -> Result<String>;
+
+    /// Waits for what arrives next.
     /// It rides out passing failures itself, so an error is one that ends watching.
-    /// An entry may come again after a crash; its id tells.
-    fn receive(&mut self) -> Result<Vec<Entry>>;
+    fn receive(&mut self) -> Result<Vec<Arrived>>;
+
+    /// Whether the user is connected yet.
+    fn connected(&self) -> bool;
 }
 
 /// Reacting to a message of the chat with an emoji.
 pub trait Reactions {
-    /// The agent's reaction to a message is one emoji: this one replaces any earlier one.
+    /// The bot's reaction to a message is one emoji: this one replaces any earlier one,
+    /// and an empty one removes it.
     fn react(&self, message: &str, emoji: &str) -> Result<()>;
 }
 
 /// A messenger: messages always, the other capabilities where it has them.
-pub trait Messenger: Messages {
+pub trait Messenger: Messages + Send {
     fn reactions(&self) -> Option<&dyn Reactions> {
         None
     }
 }
 
 /// The messenger set up, with its part of the config, a section named after it.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Settings {
     Telegram(telegram::Settings),

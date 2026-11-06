@@ -1,4 +1,4 @@
-//! Wakes a Claude Code session for messagent:
+//! Wakes a Claude Code session for messagent, until impulse does:
 //! through its channel while the session runs, by resuming it while it doesn't.
 //! A second process on a running session would fork its transcript, so it never starts one.
 
@@ -17,7 +17,7 @@ use clap::{Parser, Subcommand};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-/// Wakes a Claude Code session when messages arrive through messagent.
+/// Wakes a Claude Code session when entries for it arrive in the messenger chat's session.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
@@ -27,9 +27,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
-    /// The wake command: tells the session that unread messages wait,
+    /// The wake command: tells the session that entries wait for it,
     /// through its channel while it runs, by resuming it in this directory while it doesn't.
-    /// The agent reads them itself, so that a message counts as seen only once it has,
+    /// The agent receives them itself, so that a message counts as seen only once it has,
     /// and a wake that fails leaves them unread.
     Wake {
         session: String,
@@ -42,11 +42,35 @@ enum Action {
     Channel,
 }
 
-const INSTRUCTIONS: &str = "You are told here when the user's messenger chat has new messages. \
-    `messagent read` prints them and marks them seen, which the user sees. \
-    Only what you send with `messagent send` reaches the user.";
+const INSTRUCTIONS: &str = "The user's messenger chat is a polylogue session, \
+    whose link `messagent session` prints: what the user writes arrives as their entries, \
+    and what you send reaches them in the messenger, plain text always. \
+    This session is resumed at each wake, in a new process, so take part with something that \
+    keeps your own link on disk, such as the polylogue script: \
+    `curl -so polylogue https://polylogue.agentics.lwirth.com/polylogue`, then `sh polylogue help`. \
+    Telegram's own formatting, and reacting to a message, are entries of their own: \
+    https://raw.githubusercontent.com/luiswirth/messagent/main/telegram.md and \
+    https://raw.githubusercontent.com/luiswirth/messagent/main/reactions.md. \
+    You are told here when entries wait for you.";
 
-const WAITING: &str = "New messages wait in the messenger chat: run `messagent read`.";
+/// What the agent is told when entries wait: the session's link with it,
+/// so that it needs no `messagent` of its own to find it.
+fn waiting_message() -> String {
+    let link = Command::new("messagent")
+        .arg("session")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
+    match link {
+        Some(link) => {
+            format!(
+                "New entries wait for you in the messenger chat's session, {link}: receive them."
+            )
+        }
+        None => "New entries wait for you in the messenger chat's session: receive them.".into(),
+    }
+}
 
 fn main() -> Result<()> {
     match Cli::parse().action {
@@ -69,19 +93,13 @@ fn socket() -> Result<PathBuf> {
     .join("channel.sock"))
 }
 
-/// Whether unread messages wait, which leaves them unread.
+/// Whether entries wait that the agent has not read.
 fn waiting() -> Result<bool> {
-    let output = Command::new("messagent")
-        .args(["read", "--peek"])
-        .output()
-        .context("can't run `messagent read --peek`")?;
-    if !output.status.success() {
-        bail!(
-            "`messagent read --peek` failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    Ok(!output.stdout.trim_ascii().is_empty())
+    let status = Command::new("messagent")
+        .arg("waiting")
+        .status()
+        .context("can't run `messagent waiting`")?;
+    Ok(status.success())
 }
 
 #[derive(Deserialize)]
@@ -106,7 +124,7 @@ fn wake(session: &str, claude: &[String]) -> Result<()> {
     if running(session)? {
         let mut stream = UnixStream::connect(socket()?).context(
             "the session runs without the messagent channel, \
-             so the messages wait until it runs `messagent read`",
+             so the entries wait until it receives them",
         )?;
         stream.write_all(b"wake\n")?;
         return Ok(());
@@ -114,7 +132,7 @@ fn wake(session: &str, claude: &[String]) -> Result<()> {
     if !waiting()? {
         return Ok(());
     }
-    let prompt = format!("{INSTRUCTIONS}\n\n{WAITING}");
+    let prompt = format!("{INSTRUCTIONS}\n\n{}", waiting_message());
     let status = Command::new("claude")
         .args(["--print", "--resume", session])
         .env(RESUMED, "1")
@@ -145,13 +163,13 @@ fn deliver(stdout: &Mutex<io::Stdout>) -> Result<()> {
         json!({
             "jsonrpc": "2.0",
             "method": "notifications/claude/channel",
-            "params": { "content": WAITING },
+            "params": { "content": waiting_message() },
         }),
     )
 }
 
 /// Set for a resumed session, which starts the channel too but ignores what it sends:
-/// the prompt already tells the agent that messages wait.
+/// the prompt already tells the agent that entries wait.
 const RESUMED: &str = "MESSAGENT_CLAUDE_RESUMED";
 
 fn channel() -> Result<()> {

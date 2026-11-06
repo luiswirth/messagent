@@ -5,11 +5,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Paths, messenger};
 
-/// What setup fixes: the wake command, and the messenger with its settings.
+/// What setup fixes: the user's name, the relay, the wake command, and the messenger with its settings.
 /// It holds a messenger's credentials, so only its owner may read it.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Config {
-    /// A shell command run after new entries reach the log, empty for none.
+    /// The user's name in the session, such as `luis`.
+    pub name: String,
+    /// The relay the session is on, if not the public one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay: Option<String>,
+    /// A shell command that wakes the agent, run when an entry for it arrives while it is not
+    /// receiving, empty for none.
     #[serde(default)]
     pub wake: String,
     #[serde(flatten)]

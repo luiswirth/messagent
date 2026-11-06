@@ -9,3 +9,13 @@ ci:
     cargo clippy --all-targets
     cargo test
     cargo doc --no-deps
+    just bridge
+
+# The bridge end to end, between a fake Telegram and a relay of its own.
+bridge:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --quiet
+    POLYLOGUE_ADDRESS=127.0.0.1:8792 polylogue-relay &
+    trap 'kill $!' EXIT
+    tests/bridge.sh http://localhost:8792 "${CARGO_TARGET_DIR:-target}/debug/messagent"

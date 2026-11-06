@@ -12,8 +12,12 @@ pub const MESSAGE_LIMIT: usize = 4096;
 /// How long a long poll waits for updates, in seconds.
 pub const POLL_SECONDS: u64 = 50;
 
+/// Telegram's Bot API, where none other is set up.
+pub const API: &str = "https://api.telegram.org";
+
 pub struct Bot {
     agent: ureq::Agent,
+    api: String,
     token: String,
 }
 
@@ -76,7 +80,8 @@ pub struct Update {
 }
 
 impl Bot {
-    pub fn new(token: &str) -> Self {
+    /// The bot of `token`, at the Bot API at `api`.
+    pub fn new(api: &str, token: &str) -> Self {
         let agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(POLL_SECONDS + 30)))
             .http_status_as_error(false)
@@ -84,12 +89,13 @@ impl Bot {
             .into();
         Self {
             agent,
+            api: api.trim_end_matches('/').into(),
             token: token.into(),
         }
     }
 
     fn call<T: DeserializeOwned>(&self, method: &str, body: Value) -> Result<T> {
-        let url = format!("https://api.telegram.org/bot{}/{method}", self.token);
+        let url = format!("{}/bot{}/{method}", self.api, self.token);
         // The URL holds the token, which an error must not show.
         let mut response = self.agent.post(&url).send_json(body).map_err(|error| {
             let error = error.to_string().replace(&self.token, "<token>");
@@ -123,24 +129,27 @@ impl Bot {
         )
     }
 
+    /// Sets the bot's reaction to a message, or removes it with an empty emoji.
     pub fn react(&self, chat: i64, message: i64, emoji: &str) -> Result<()> {
+        let reaction = match emoji {
+            "" => json!([]),
+            emoji => json!([{ "type": "emoji", "emoji": emoji }]),
+        };
         self.call::<bool>(
             "setMessageReaction",
-            json!({
-                "chat_id": chat,
-                "message_id": message,
-                "reaction": [{ "type": "emoji", "emoji": emoji }],
-            }),
+            json!({ "chat_id": chat, "message_id": message, "reaction": reaction }),
         )?;
         Ok(())
     }
 
-    /// Sends a text, formatted by the parse mode where there is one.
-    pub fn send_message(&self, chat: i64, text: &str, parse_mode: Option<&str>) -> Result<Message> {
-        let mut body = json!({ "chat_id": chat, "text": text });
-        if let Some(parse_mode) = parse_mode {
-            body["parse_mode"] = parse_mode.into();
-        }
-        self.call("sendMessage", body)
+    /// Sends a plain text.
+    pub fn send_message(&self, chat: i64, text: &str) -> Result<Message> {
+        self.send_raw(chat, Map::from_iter([("text".into(), text.into())]))
+    }
+
+    /// Sends a message given as the body of `sendMessage`, as is, to `chat`.
+    pub fn send_raw(&self, chat: i64, mut body: Map<String, Value>) -> Result<Message> {
+        body.insert("chat_id".into(), chat.into());
+        self.call("sendMessage", Value::Object(body))
     }
 }
