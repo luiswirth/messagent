@@ -391,9 +391,7 @@ impl Bridge {
                 continue;
             }
             let seen = sort(entry, user);
-            let for_agents = entry
-                .to()
-                .is_none_or(|to| to.contains(agent));
+            let for_agents = entry.to().is_none_or(|to| to.contains(agent));
             if seen != Seen::Nothing && entry.from != *agent && for_agents {
                 latest = entry.n;
                 fresh = true;

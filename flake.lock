@@ -1,5 +1,27 @@
 {
   "nodes": {
+    "agentwire": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay",
+        "treefmt-nix": "treefmt-nix"
+      },
+      "locked": {
+        "lastModified": 1793925954,
+        "narHash": "sha256-VrEZxjmCnISNnziMU+lWolIeARWJW0I6oULGPEhoQx8=",
+        "owner": "luiswirth",
+        "repo": "agentwire",
+        "rev": "a1c26f8779417545f07c807493d1fe4c7dc47f21",
+        "type": "github"
+      },
+      "original": {
+        "owner": "luiswirth",
+        "repo": "agentwire",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1793540411,
@@ -16,32 +38,10 @@
         "type": "github"
       }
     },
-    "polylogue": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay",
-        "treefmt-nix": "treefmt-nix"
-      },
-      "locked": {
-        "lastModified": 1793923703,
-        "narHash": "sha256-F43V7ddmXcj6CqP5pOKn0v7OAykNGJBL0cQZ3yxTDBs=",
-        "owner": "luiswirth",
-        "repo": "polylogue",
-        "rev": "e116e85b14146bf32cd73877b4f0ed1b91dcbf0a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "luiswirth",
-        "repo": "polylogue",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
+        "agentwire": "agentwire",
         "nixpkgs": "nixpkgs",
-        "polylogue": "polylogue",
         "rust-overlay": "rust-overlay_2",
         "treefmt-nix": "treefmt-nix_2"
       }
@@ -49,7 +49,7 @@
     "rust-overlay": {
       "inputs": {
         "nixpkgs": [
-          "polylogue",
+          "agentwire",
           "nixpkgs"
         ]
       },
@@ -90,7 +90,7 @@
     "treefmt-nix": {
       "inputs": {
         "nixpkgs": [
-          "polylogue",
+          "agentwire",
           "nixpkgs"
         ]
       },

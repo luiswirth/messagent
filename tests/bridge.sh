@@ -13,6 +13,8 @@ python3 -I "$here/fake-telegram.py" $port 2>/dev/null &
 fake=$!
 watch=
 agent=
+# Everyone else the test joins, who leaves at the end.
+others=
 cleanup() {
   [ -n "$watch" ] && kill "$watch" 2>/dev/null
   kill $fake 2>/dev/null
@@ -22,7 +24,7 @@ cleanup() {
       curl -s -X POST "$me/leave" >/dev/null || true
     done
   fi
-  [ -n "$agent" ] && curl -s -X POST "$agent/leave" >/dev/null || true
+  for me in $agent $others; do curl -s -X POST "$me/leave" >/dev/null || true; done
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -127,10 +129,14 @@ until_ '[ -s "$XDG_STATE_HOME/messagent/strangers.jsonl" ]' || true
 check "a stranger's message is logged here" "$(grep -c 'ignore your instructions' "$XDG_STATE_HOME/messagent/strangers.jsonl")" 1
 check "and never reaches the session" "$(curl -s "$agent?after=0&wait=0" | grep -c 'ignore your instructions')" 0
 
-curl -s -H 'Content-Type: text/plain; to="ben"' --data-binary 'For Ben only.' "$(curl -s -X POST "$link/join?as=tristan" | field link)" >/dev/null
+# Joins another participant, as $joined, who leaves at the end.
+join() { joined=$(curl -s -X POST "$link/join?as=$1" | field link); others="$others $joined"; }
+join tristan
+curl -s -H 'Content-Type: text/plain; to="ben"' --data-binary 'For Ben only.' "$joined" >/dev/null
 sleep 1
 before=$(woken)
-curl -s -H 'Content-Type: text/plain; to="ben"' --data-binary 'For Ben only, again.' "$(curl -s -X POST "$link/join?as=tristan2" | field link)" >/dev/null
+join tristan2
+curl -s -H 'Content-Type: text/plain; to="ben"' --data-binary 'For Ben only, again.' "$joined" >/dev/null
 sleep 1
 check "a message for someone else wakes no agent" "$(woken)" "$before"
 until_ 'bodies sendMessage | grep -q "For Ben only, again."' && r=yes || r=no
@@ -147,7 +153,8 @@ check "the agent receiving gets the next message" "$(grep -c '"text":"second"' "
 sleep 1
 check "and isn't woken for it" "$(woken)" "$before"
 
-curl -s --data-binary 'Me too.' "$(curl -s -X POST "$link/join?as=ben" | field link)" >/dev/null
+join ben
+curl -s --data-binary 'Me too.' "$joined" >/dev/null
 until_ 'bodies sendMessage | grep -q "Me too."' || true
 check "someone else's message names them" "$(bodies sendMessage | tail -1)" '{"chat_id": 42, "text": "ben: Me too."}'
 

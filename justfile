@@ -16,6 +16,6 @@ bridge:
     #!/usr/bin/env bash
     set -euo pipefail
     cargo build --quiet
-    POLYLOGUE_ADDRESS=127.0.0.1:8792 polylogue-relay &
+    AGENTWIRE_ADDRESS=127.0.0.1:8792 agentwire-relay &
     trap 'kill $!' EXIT
     tests/bridge.sh http://localhost:8792 "${CARGO_TARGET_DIR:-target}/debug/messagent"

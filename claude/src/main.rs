@@ -14,8 +14,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use serde::Deserialize;
 use messagent::{Config, Paths};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 /// Wakes a Claude Code session when entries for it arrive in the messenger chat's session.
