@@ -1,7 +1,9 @@
-//! The bridge: messagent as a participant of one polylogue session, under the user's name,
-//! carrying the messenger chat in and out.
+//! The bridge: messagent as a participant in one polylogue room per chat, under the user's name,
+//! carrying the messenger chat in and out as polylogue speech
+//! (`https://polylogue.agentics.lwirth.com/speech.md`).
+//! The room is an agentwire session, which is only its transport.
 //!
-//! What the user writes becomes their entries, and what the others send goes out to the user.
+//! What the user writes becomes their speech, and what the others say goes out to the user.
 //! messagent's own notices come from a second participant, `<user>/messagent`,
 //! so that no one takes them for the user's words.
 //! The agent is the participant the config names: how far it has read marks the user's
@@ -34,14 +36,14 @@ use crate::{
 pub const WAKE_FAILED: &str =
     "Your agent couldn't be woken: the wake command failed. Your messages wait for it.";
 
-/// The type of what the user and messagent say: plain text, for everyone in the session,
-/// since everyone in the chat's session is in the conversation.
+/// The type of what the user and messagent say: speech in plain text, to everyone in the room,
+/// since everyone in the chat's room is in the conversation.
 const SPEECH: &str = "text/plain; charset=utf-8; to=\"*\"";
 
-/// The session of the chat, as the bridge keeps it across runs.
+/// The chat's room, its agentwire session, as the bridge keeps it across runs.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Session {
-    /// The session's link, which the agent joins with.
+    /// The session's link, which the agent joins the room with.
     pub link: String,
     /// The user's own link.
     pub me: String,
@@ -168,7 +170,7 @@ impl Bridge {
         self.config.relay.as_deref().unwrap_or(agentwire::RELAY)
     }
 
-    /// Starts a session for the chat, with the user and messagent's notices in it.
+    /// Starts the chat's room, a session on the relay, with the user and messagent's notices in it.
     fn create(&self) -> Result<Session> {
         let link = self.relay.create(self.relay_url())?;
         let me = self.relay.join(&link, &self.config.name)?.link;

@@ -43,18 +43,20 @@ enum Action {
     Channel,
 }
 
-const INSTRUCTIONS: &str = "The user's messenger chat is a polylogue session, \
-    whose link `messagent session` prints: what the user writes arrives as their entries, \
-    and what you send reaches them in the messenger, plain text always. \
-    This session is resumed at each wake, in a new process, so take part with something that \
-    keeps your own link on disk, such as the agentwire script: \
+const INSTRUCTIONS: &str = "The user's messenger chat is a polylogue room, \
+    whose link `messagent session` prints: what the user writes arrives as their speech \
+    (https://polylogue.agentics.lwirth.com/speech.md), and what you say reaches them \
+    in the messenger, plain text always. \
+    The room is an agentwire session, and this Claude Code session is resumed at each wake, \
+    in a new process, so take part with something that keeps your own link on disk, \
+    such as the agentwire script: \
     `curl -so agentwire https://agentwire.agentics.lwirth.com/agentwire`, then `sh agentwire help`. \
     Telegram's own formatting, and reacting to a message, are entries of their own: \
     https://raw.githubusercontent.com/luiswirth/messagent/main/telegram.md and \
     https://raw.githubusercontent.com/luiswirth/messagent/main/reactions.md. \
     You are told here when entries wait for you.";
 
-/// What the agent is told when entries wait: the session's link, and its name there,
+/// What the agent is told when entries wait: the room's link, and its name there,
 /// so that it needs nothing more to take part.
 fn waiting_message() -> String {
     let paths = Paths::from_env().ok();
@@ -68,10 +70,10 @@ fn waiting_message() -> String {
         .map(|config| config.agent);
     match (link, agent) {
         (Some(link), Some(agent)) => format!(
-            "New entries wait for you in the messenger chat's session, {link}, \
+            "New entries wait for you in the messenger chat's room, {link}, \
              where you are {agent}: receive them."
         ),
-        _ => "New entries wait for you in the messenger chat's session: receive them.".into(),
+        _ => "New entries wait for you in the messenger chat's room: receive them.".into(),
     }
 }
 

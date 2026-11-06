@@ -9,8 +9,8 @@ use messagent::{
     telegram::{self, Telegram},
 };
 
-/// The user's messenger chat with their agent, as a polylogue session:
-/// messagent takes part in it as the user, and carries the chat in and out.
+/// The user's messenger chat with their agent, as a polylogue room:
+/// messagent takes part in it as the user, and carries the chat in and out as polylogue speech.
 /// Each messenger is a setup of its own: where a machine has several,
 /// `MESSAGENT_SETUP` names the one a command acts on.
 #[derive(Parser)]
@@ -42,11 +42,11 @@ enum Action {
         #[arg(long, default_value = "")]
         wake: String,
     },
-    /// The bridge: carry the chat into its session and back, and wake the agent.
+    /// The bridge: carry the chat into its room and back, and wake the agent.
     /// It runs in the background, and must run at least once a day,
     /// since Telegram keeps a message for 24 hours.
     Watch,
-    /// Print the session's link, which the agent joins with,
+    /// Print the link of the room's agentwire session, which the agent joins with,
     /// once the user is connected.
     Session,
 }

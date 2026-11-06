@@ -51,7 +51,7 @@ impl Paths {
         self.config.join("config.toml")
     }
 
-    /// The chat's polylogue session, as the bridge keeps it.
+    /// The chat's room, its agentwire session, as the bridge keeps it.
     pub fn session(&self) -> PathBuf {
         self.state.join("session.json")
     }

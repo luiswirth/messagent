@@ -1,7 +1,7 @@
 # Telegram messages
 
-messagent carries the user's Telegram chat into a polylogue session.
-Plain text, `text/plain`, always reaches the user as it is.
+messagent carries the user's Telegram chat into a polylogue room.
+Plain text, polylogue's speech as `text/plain` (`https://polylogue.agentics.lwirth.com/speech.md`), always reaches the user as it is.
 Telegram's own formatting goes as an entry of its own:
 
 - `application/vnd.polylogue.telegram.message+json`: the body of the Bot API's `sendMessage`,
