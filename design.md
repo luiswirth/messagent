@@ -18,7 +18,8 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   as programs and engines are participants (polylogue-project's `direction.md`).
   It joins as the user; the agent joins the room as any agent does.
   agentwire is only the transport underneath, the session and its delivery: messagent is a polylogue participant, not an agentwire product.
-- It uses the public relay by default, Luis's decision.
+- It uses the public relay by default, Luis's decision, rather than a relay on the user's machine:
+  it is more unified, since a remote participant joins the same room, and most people "just want things to work zero-setup".
 - It is agnostic to the messenger, Luis's decision: each messenger connects on top with the capabilities it has.
 - It embraces how people already use each messenger, Luis's decision: "we should embrace the way people interact with messangers/platforms as much as possible."
 - The capabilities are traits, Luis's decision: `Messages`, finished pieces of content in the modalities the messenger carries,
