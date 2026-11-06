@@ -11,6 +11,9 @@ use crate::{Paths, messenger};
 pub struct Config {
     /// The user's name in the session, such as `luis`.
     pub name: String,
+    /// The agent's name in the session, such as `luis/claude`:
+    /// only its reading marks a message seen, and only it is woken.
+    pub agent: String,
     /// The relay the session is on, if not the public one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relay: Option<String>,

@@ -1,4 +1,4 @@
-use std::{fs, io::Read, path::PathBuf, process::ExitCode};
+use std::{fs, io::Read, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -30,7 +30,10 @@ enum Action {
         /// The user's name in the session, such as `luis`.
         #[arg(long)]
         name: String,
-        /// The polylogue relay, if not the public one.
+        /// The agent's name in the session, such as `luis/claude`, which it joins under.
+        #[arg(long)]
+        agent: String,
+        /// The agentwire relay, if not the public one.
         #[arg(long)]
         relay: Option<String>,
         /// A shell command `messagent watch` runs to wake the agent,
@@ -46,8 +49,6 @@ enum Action {
     /// Print the session's link, which the agent joins with,
     /// once the user is connected.
     Session,
-    /// Succeed if entries wait in the session that the agent has not read.
-    Waiting,
 }
 
 /// The messenger to connect, one of them.
@@ -60,37 +61,31 @@ struct Choice {
     telegram: Option<PathBuf>,
 }
 
-fn main() -> Result<ExitCode> {
+fn main() -> Result<()> {
     let paths = Paths::from_env()?;
     match Cli::parse().action {
         Action::Setup {
             messenger,
             name,
+            agent,
             relay,
             wake,
-        } => setup(&paths, messenger, name, relay, wake)?,
+        } => setup(&paths, messenger, name, agent, relay, wake)?,
         Action::Watch => bridge::watch(&paths)?,
         Action::Session => {
             let session = Session::load(&paths)?
                 .context("no session yet: it starts once the user is connected")?;
             println!("{}", session.link);
         }
-        Action::Waiting => {
-            let waiting = Session::load(&paths)?.is_some_and(|session| session.waiting());
-            return Ok(if waiting {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::FAILURE
-            });
-        }
     }
-    Ok(ExitCode::SUCCESS)
+    Ok(())
 }
 
 fn setup(
     paths: &Paths,
     choice: Choice,
     name: String,
+    agent: String,
     relay: Option<String>,
     wake: String,
 ) -> Result<()> {
@@ -120,6 +115,7 @@ fn setup(
     fs::remove_file(paths.session()).ok();
     Config {
         name,
+        agent,
         relay,
         wake,
         messenger,

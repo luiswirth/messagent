@@ -9,15 +9,15 @@
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
 
     # The relay, for the bridge's test.
-    polylogue.url = "github:luiswirth/polylogue";
-    polylogue.inputs.nixpkgs.follows = "nixpkgs";
+    agentwire.url = "github:luiswirth/agentwire";
+    agentwire.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = {
     nixpkgs,
     rust-overlay,
     treefmt-nix,
-    polylogue,
+    agentwire,
     ...
   }: let
     forEachSystem = f:
@@ -36,7 +36,7 @@
         cargo-edit
         just
         pkg-config
-        polylogue.packages.${pkgs.stdenv.hostPlatform.system}.default
+        agentwire.packages.${pkgs.stdenv.hostPlatform.system}.default
         python3
       ];
   in {

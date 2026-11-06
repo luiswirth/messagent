@@ -1,5 +1,5 @@
-//! The few operations of agentwire, polylogue's transport, that the bridge uses:
-//! `https://polylogue.agentics.lwirth.com/transport.md`.
+//! The few operations of agentwire, the transport polylogue is built on, that the bridge uses:
+//! `https://agentwire.agentics.lwirth.com/agentwire.md`.
 
 use std::{collections::BTreeMap, fmt, time::Duration};
 
@@ -8,10 +8,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 /// The public relay, the default.
-pub const RELAY: &str = "https://polylogue.agentics.lwirth.com";
+pub const RELAY: &str = "https://agentwire.agentics.lwirth.com";
 
-pub const JOIN: &str = "application/vnd.polylogue.join";
-pub const LEAVE: &str = "application/vnd.polylogue.leave";
+pub const JOIN: &str = "application/vnd.agentwire.join";
+pub const LEAVE: &str = "application/vnd.agentwire.leave";
 
 /// How long a receive waits at most, in seconds, before it is made again.
 const WAIT: u64 = 50;
@@ -142,7 +142,7 @@ impl Relay {
 
     /// Creates a session on the relay at `relay`, and returns its link.
     pub fn create(&self, relay: &str) -> Result<String> {
-        let url = format!("{}/v1/s", relay.trim_end_matches('/'));
+        let url = format!("{}/v2/s", relay.trim_end_matches('/'));
         let response = self.agent.post(&url).send_empty()?;
         Ok(Self::answer(response)?.trim().to_string())
     }

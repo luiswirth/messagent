@@ -57,6 +57,7 @@ export XDG_CONFIG_HOME=$work/config XDG_STATE_HOME=$work/state
 mkdir -p "$XDG_CONFIG_HOME/messagent" "$XDG_STATE_HOME/messagent"
 cat >"$XDG_CONFIG_HOME/messagent/config.toml" <<END
 name = "luis"
+agent = "luis/claude"
 relay = "$relay"
 wake = "echo woken >> $work/woken"
 
@@ -75,7 +76,7 @@ check "no session before the user connects" "$("$messagent" session 2>/dev/null 
 inject 42 "/start secret" >/dev/null
 until_ '"$messagent" session' || true
 link=$("$messagent" session)
-check "connecting starts a session" "${link%/*}" "$relay/v1/s"
+check "connecting starts a session" "${link%/*}" "$relay/v2/s"
 until_ '[ "$(bodies sendMessage | wc -l)" -ge 1 ]' || true
 check "the user is told they are connected" "$(bodies sendMessage | head -1)" '{"chat_id": 42, "text": "Connected: your messages here now reach your agent."}'
 
@@ -84,15 +85,22 @@ agent=$(curl -s -X POST "$link/join?as=luis/claude" | field link)
 hi=$(inject 42 "hi")
 until_ '[ "$(woken)" -ge 1 ]' || true
 check "an entry for the agent while it doesn't receive wakes it" "$([ "$(woken)" -ge 1 ] && echo yes)" yes
-check "messagent waiting" "$("$messagent" waiting && echo yes || echo no)" yes
+waiting() { python3 -I -c 'import json,sys; s=json.load(open(sys.argv[1])); print("yes" if s["latest"] > s["read"] else "no")' "$XDG_STATE_HOME/messagent/session.json"; }
+check "entries wait for the agent" "$(waiting)" yes
+
+voice=$(curl -s -X POST "$link/join?as=luis/voice" | field link)
+curl -s "$voice?wait=0" >/dev/null
+sleep 1
+check "someone else taking part for the user marks nothing seen" "$(bodies setMessageReaction | wc -l | tr -d ' ')" 0
+curl -s -X POST "$voice/leave" >/dev/null
 
 got=$(curl -s "$agent?wait=0")
 check "the agent receives what the user wrote, for everyone" "$(printf '%s\n' "$got" | grep -F '"from":"luis","type":"text/plain; charset=utf-8; to=\"*\""' | grep -c '"text":"hi"')" 1
 check "and messagent's notice" "$(printf '%s\n' "$got" | grep -c '"from":"luis/messagent".*connected as the user')" 1
 until_ '[ "$(bodies setMessageReaction | wc -l)" -ge 1 ]' || true
 check "what the agent read gets 👀" "$(bodies setMessageReaction | head -1)" "{\"chat_id\": 42, \"message_id\": $hi, \"reaction\": [{\"emoji\": \"👀\", \"type\": \"emoji\"}]}"
-until_ '! "$messagent" waiting' || true
-check "nothing waits once read" "$("$messagent" waiting && echo yes || echo no)" no
+until_ '[ "$(waiting)" = no ]' || true
+check "nothing waits once read" "$(waiting)" no
 
 curl -s --data-binary 'Hello, Luis.' "$agent" >/dev/null
 until_ 'bodies sendMessage | grep -q "Hello, Luis."' || true

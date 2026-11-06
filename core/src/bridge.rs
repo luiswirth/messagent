@@ -4,9 +4,9 @@
 //! What the user writes becomes their entries, and what the others send goes out to the user.
 //! messagent's own notices come from a second participant, `<user>/messagent`,
 //! so that no one takes them for the user's words.
-//! The user's agents are whatever takes part for the user, named `<user>/<agent>`:
-//! how far they have read marks the user's messages seen,
-//! and the bridge wakes them when an entry for them arrives while none of them is receiving.
+//! The agent is the participant the config names: how far it has read marks the user's
+//! messages seen, and the bridge wakes it when an entry for it arrives while it is not receiving.
+//! Others may take part for the user too, such as through a page, and count for neither.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -56,7 +56,7 @@ pub struct Session {
     /// The user's entries the agent has not read yet, nor reacted to.
     #[serde(default)]
     pub unseen: BTreeSet<i64>,
-    /// The last entry for the agent, and how far the user's agents have read.
+    /// The last entry for the agent, and how far the agent has read.
     #[serde(default)]
     pub latest: i64,
     #[serde(default)]
@@ -294,14 +294,6 @@ pub fn log_stranger(paths: &Paths, stranger: &Stranger) -> Result<()> {
     Ok(())
 }
 
-/// Whether a participant is the user's agent: whatever takes part for the user,
-/// named under theirs as `<user>/<agent>`, other than messagent itself.
-pub fn is_agent(name: &str, user: &str) -> bool {
-    name.strip_prefix(user)
-        .is_some_and(|rest| rest.starts_with('/'))
-        && name != notices_name(user)
-}
-
 /// What one entry of the session is for the bridge.
 #[derive(Debug, PartialEq)]
 pub enum Seen {
@@ -325,8 +317,8 @@ pub fn sort(entry: &Entry, user: &str) -> Seen {
 }
 
 /// An entry of someone else, as the plain text the user reads,
-/// named after its sender unless it is the user's agent.
-pub fn plain(entry: &Entry, user: &str) -> String {
+/// named after its sender unless it is the agent's.
+pub fn plain(entry: &Entry, agent: &str) -> String {
     let text = match &entry.text {
         Some(text) => text.clone(),
         None => {
@@ -341,7 +333,7 @@ pub fn plain(entry: &Entry, user: &str) -> String {
             )
         }
     };
-    if is_agent(&entry.from, user) {
+    if entry.from == agent {
         text
     } else {
         format!("{}: {text}", entry.from)
@@ -378,7 +370,7 @@ impl Bridge {
             messenger.send_native(&body)?;
             return Ok(());
         }
-        for part in messenger.split(&plain(entry, &self.config.name)) {
+        for part in messenger.split(&plain(entry, &self.config.agent)) {
             messenger.send(&part)?;
         }
         Ok(())
@@ -391,6 +383,7 @@ impl Bridge {
             return Ok(());
         };
         let user = &self.config.name;
+        let agent = &self.config.agent;
         let mut latest = session.latest;
         let mut fresh = false;
         for entry in &received.entries {
@@ -400,8 +393,8 @@ impl Bridge {
             let seen = sort(entry, user);
             let for_agents = entry
                 .to()
-                .is_none_or(|to| to.iter().any(|name| is_agent(name, user)));
-            if seen != Seen::Nothing && !is_agent(&entry.from, user) && for_agents {
+                .is_none_or(|to| to.contains(agent));
+            if seen != Seen::Nothing && entry.from != *agent && for_agents {
                 latest = entry.n;
                 fresh = true;
             }
@@ -411,17 +404,8 @@ impl Bridge {
             }
             self.update(|session| session.after = entry.n)?;
         }
-        let agents: Vec<_> = received
-            .presence
-            .iter()
-            .filter(|(name, _)| is_agent(name, user))
-            .map(|(_, presence)| presence)
-            .collect();
-        let read = agents
-            .iter()
-            .map(|presence| presence.read)
-            .max()
-            .unwrap_or(session.read);
+        let presence = received.presence.get(agent);
+        let read = presence.map_or(session.read, |presence| presence.read);
         let current = self.current().unwrap_or_else(|| session.clone());
         for n in current.unseen.range(..=read) {
             if let (Some(reactions), Some(message)) =
@@ -438,7 +422,7 @@ impl Bridge {
             session.latest = latest;
             session.read = read;
         })?;
-        if fresh && !agents.iter().any(|presence| presence.receiving) {
+        if fresh && !presence.is_some_and(|presence| presence.receiving) {
             waker.wake();
         }
         Ok(())

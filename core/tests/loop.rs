@@ -165,6 +165,7 @@ fn config_survives_a_round_trip() {
     let paths = paths();
     let config = Config {
         name: "luis".into(),
+        agent: "luis/claude".into(),
         relay: Some("http://localhost:8791".into()),
         wake: "wake".into(),
         messenger: messenger::Settings::Telegram(Settings {

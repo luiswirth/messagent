@@ -1,7 +1,7 @@
 # Reactions
 
 Reactions let a participant react to an entry with an emoji.
-It is an extension of the polylogue transport, whose spec is `https://polylogue.agentics.lwirth.com/transport.md`.
+It is an extension of polylogue, on agentwire, whose spec is `https://agentwire.agentics.lwirth.com/agentwire.md`.
 messagent introduced it, so its spec lives here until a second client speaks it.
 
 ## Entries

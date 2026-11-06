@@ -15,6 +15,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use serde::Deserialize;
+use messagent::{Config, Paths};
 use serde_json::{Value, json};
 
 /// Wakes a Claude Code session when entries for it arrive in the messenger chat's session.
@@ -46,29 +47,31 @@ const INSTRUCTIONS: &str = "The user's messenger chat is a polylogue session, \
     whose link `messagent session` prints: what the user writes arrives as their entries, \
     and what you send reaches them in the messenger, plain text always. \
     This session is resumed at each wake, in a new process, so take part with something that \
-    keeps your own link on disk, such as the polylogue script: \
-    `curl -so polylogue https://polylogue.agentics.lwirth.com/polylogue`, then `sh polylogue help`. \
+    keeps your own link on disk, such as the agentwire script: \
+    `curl -so agentwire https://agentwire.agentics.lwirth.com/agentwire`, then `sh agentwire help`. \
     Telegram's own formatting, and reacting to a message, are entries of their own: \
     https://raw.githubusercontent.com/luiswirth/messagent/main/telegram.md and \
     https://raw.githubusercontent.com/luiswirth/messagent/main/reactions.md. \
     You are told here when entries wait for you.";
 
-/// What the agent is told when entries wait: the session's link with it,
-/// so that it needs no `messagent` of its own to find it.
+/// What the agent is told when entries wait: the session's link, and its name there,
+/// so that it needs nothing more to take part.
 fn waiting_message() -> String {
-    let link = Command::new("messagent")
-        .arg("session")
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string());
-    match link {
-        Some(link) => {
-            format!(
-                "New entries wait for you in the messenger chat's session, {link}: receive them."
-            )
-        }
-        None => "New entries wait for you in the messenger chat's session: receive them.".into(),
+    let paths = Paths::from_env().ok();
+    let link = paths
+        .as_ref()
+        .and_then(|paths| messagent::bridge::Session::load(paths).ok().flatten())
+        .map(|session| session.link);
+    let agent = paths
+        .as_ref()
+        .and_then(|paths| Config::load(paths).ok())
+        .map(|config| config.agent);
+    match (link, agent) {
+        (Some(link), Some(agent)) => format!(
+            "New entries wait for you in the messenger chat's session, {link}, \
+             where you are {agent}: receive them."
+        ),
+        _ => "New entries wait for you in the messenger chat's session: receive them.".into(),
     }
 }
 
@@ -95,11 +98,8 @@ fn socket() -> Result<PathBuf> {
 
 /// Whether entries wait that the agent has not read.
 fn waiting() -> Result<bool> {
-    let status = Command::new("messagent")
-        .arg("waiting")
-        .status()
-        .context("can't run `messagent waiting`")?;
-    Ok(status.success())
+    let paths = Paths::from_env()?;
+    Ok(messagent::bridge::Session::load(&paths)?.is_some_and(|session| session.waiting()))
 }
 
 #[derive(Deserialize)]
