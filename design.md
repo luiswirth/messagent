@@ -14,9 +14,10 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
 - It is the actual phone experience, Luis's decision: Discord is no fit as the main messenger, since it is not a phone messenger people are used to.
 - The UI is the messenger: no UI of our own, everything is infrastructure and backend, Luis's decision.
 - It is built on polylogue, Luis's decision (2026-11-06), replacing "without polylogue for now":
-  messagent is a program that takes part in a polylogue session and carries the messenger chat in and out,
-  as programs and engines are participants of a session (polylogue-project's `direction.md`).
-  It joins as the user; the agent joins the session as any agent does.
+  messagent is a participant in a polylogue room, Luis's framing: it carries the messenger chat in and out, as polylogue speech,
+  as programs and engines are participants (polylogue-project's `direction.md`).
+  It joins as the user; the agent joins the room as any agent does.
+  agentwire is only the transport underneath, the session and its delivery: messagent is a polylogue participant, not an agentwire product.
 - It uses the public relay by default, Luis's decision.
 - It is agnostic to the messenger, Luis's decision: each messenger connects on top with the capabilities it has.
 - It embraces how people already use each messenger, Luis's decision: "we should embrace the way people interact with messangers/platforms as much as possible."
@@ -30,7 +31,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   "just let telegram do all the things. the agent should just write whatever each messager can accept. fully raw, full power, nothing custom".
 - Agents never have to keep calling something to show they are typing, Luis's decision.
   No typing indicator for now, Luis's decision: "not needed".
-- The agent reaches messagent only through polylogue, a command line through curl or the `agentwire` script.
+- The agent reaches messagent only through the polylogue room, with a command line: curl or the `agentwire` script.
   CLIs are preferred, Luis's decision: "CLI are the way to go in gerneral for harness-agnostic things."
   Every agent has a shell, Luis's decision: "a agent that cannot use a shell is not an agent in my definition".
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
