@@ -73,6 +73,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   The session keeps the messages, since a session lives until everyone has left, Luis's decision, so the agent can also read them later:
   whether it answers at once or only checks now and then is the user's choice,
   which suits an agent on a laptop that is sometimes closed.
+  A session also ends once nobody has received in it for a week, Luis's decision (2026-11-06), which the bridge's own receive prevents.
 - Waking is solved outside polylogue, by impulse, Luis's decision: agentwire's blocking receive is the command an impulse waits on.
   Until impulse exists, messagent wakes the agent itself: on the bridge's own receive, an entry for the agent while the agent isn't receiving runs the wake command.
   A participant has one receive at a time, so the bridge can't wait on the agent's.
