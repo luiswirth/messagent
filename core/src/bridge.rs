@@ -446,6 +446,8 @@ impl Bridge {
     }
 
     /// Receives from the session for good, carrying what comes out to the user.
+    /// A change of presence while it is between two receives, such as the agent reading,
+    /// returns no receive: it is seen at the next one that returns, so a 👀 may come late.
     fn listen(self: Arc<Self>, waker: Waker) -> Result<()> {
         let messenger = messenger::open(&self.config.messenger, &self.paths)?;
         let mut backoff = Backoff::new();

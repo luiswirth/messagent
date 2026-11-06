@@ -95,6 +95,9 @@ curl -s "$voice?wait=0" >/dev/null
 sleep 1
 check "someone else taking part for the user marks nothing seen" "$(bodies setMessageReaction | wc -l | tr -d ' ')" 0
 curl -s -X POST "$voice/leave" >/dev/null
+# A change of presence while the bridge is between receives is seen only at its next receive,
+# so the agent reads only once the bridge waits again.
+sleep 1
 
 got=$(curl -s "$agent?wait=0")
 check "the agent receives what the user wrote, for everyone" "$(printf '%s\n' "$got" | grep -F '"from":"luis","type":"text/plain; charset=utf-8; to=\"*\""' | grep -c '"text":"hi"')" 1
