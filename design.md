@@ -25,6 +25,8 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
 - The capabilities are traits, Luis's decision: `Messages`, finished pieces of content in the modalities the messenger carries,
   and `Calls`, live audio both ways.
   A voice note is a message with audio content.
+- Images are first-class, both ways, Luis's decision (2026-11-08): "messagent should get first-class image support".
+  An image is an entry of its own image type, as agentwire carries any payload.
 - Reacting to messages is an additional, optional capability of a messenger, Luis's decision.
 - A message the agent has read gets 👀, Luis's decision: "so it's not only received but acutally seen by an agent/llm."
 - The agent can react to the user's messages itself, Luis's decision, through an entry type of a reactions extension.
