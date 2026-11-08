@@ -185,7 +185,7 @@ curl -s -H 'Content-Type: image/png; to="*"' --data-binary @"$work/page.png" "$a
 until_ 'bodies sendDocument | grep -q page.png' || true
 check "a lossless image goes out as a file, exact" "$(bodies sendDocument | tail -1 | grep -o "\"filename\": \"page.png\", \"sha256\": \"$(sha "$work/page.png")\"" | wc -l | tr -d ' ')" 1
 page_n=$(curl -s -H 'Content-Type: image/png; to="luis/messagent"' --data-binary @"$work/page.png" "$agent?filename=page.png" | field n)
-curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json' \
+curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json; to="luis/messagent"' \
   --data-binary "{\"document\":$page_n,\"caption\":\"<b>Today</b>\",\"parse_mode\":\"HTML\"}" "$agent" >/dev/null
 until_ 'bodies sendDocument | grep -q Today' || true
 check "Telegram's own format sends an entry's image, with a caption" "$(bodies sendDocument | tail -1 | grep -c '"caption": "<b>Today</b>".*"parse_mode": "HTML"')" 1

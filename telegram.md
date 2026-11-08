@@ -38,7 +38,8 @@ curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json' \
   --data-binary '{"document":12,"caption":"<b>Today</b>","parse_mode":"HTML"}' '<me>'
 ```
 
-An entry addressed to messagent alone never reaches the user by itself.
+An image or speech addressed to messagent alone never reaches the user by itself;
+a Telegram message always does, however it is addressed.
 
 A message Telegram refuses, such as one whose formatting doesn't parse,
 comes back as a notice from `<user>/messagent`.

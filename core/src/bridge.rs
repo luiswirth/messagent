@@ -456,10 +456,12 @@ impl Bridge {
                 fresh = true;
             }
             // One addressed to messagent alone is for its use, such as an image a Telegram
-            // message sends, and not for the user by itself.
-            let for_messagent = entry
-                .to()
-                .is_some_and(|to| to.iter().all(|name| *name == notices_name(user)));
+            // message sends, and not for the user by itself; a message in the messenger's own
+            // format is for messagent to carry out, however it is addressed.
+            let for_messagent = !entry.is(messenger.native())
+                && entry
+                    .to()
+                    .is_some_and(|to| to.iter().all(|name| *name == notices_name(user)));
             if seen == Seen::Out && !for_messagent {
                 let current = self.current().unwrap_or_else(|| session.clone());
                 self.deliver(messenger, entry, &current)?;
