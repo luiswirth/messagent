@@ -4,7 +4,7 @@ Message and call your agent in a messaging app, like a friend.
 "messagent" is the name, Luis's decision.
 The flagship for now, Luis's decision: "the messenger chat is soooo simple. everybody will udnerstand it."
 It may subsume voice mode.
-polylogue's `chat` stays, as a reference, Luis's decision.
+Vibe Together's `chat` stays, as a reference, Luis's decision.
 A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's decision.
 
 ## Decided
@@ -13,11 +13,11 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   anything that costs the user money or needs steps on their side is a non-starter.
 - It is the actual phone experience, Luis's decision: Discord is no fit as the main messenger, since it is not a phone messenger people are used to.
 - The UI is the messenger: no UI of our own, everything is infrastructure and backend, Luis's decision.
-- It is built on polylogue, Luis's decision (2026-11-06), replacing "without polylogue for now":
-  messagent is a participant in a polylogue room, Luis's framing: it carries the messenger chat in and out, as polylogue speech,
-  as programs and engines are participants (polylogue-project's `direction.md`).
+- It is built on Vibe Together, Luis's decision (2026-11-06), replacing "without polylogue for now":
+  messagent is a participant in a Vibe Together room, Luis's framing: it carries the messenger chat in and out, as Vibe Together speech,
+  as programs and engines are participants (vibe-together-project's `direction.md`).
   It joins as the user; the agent joins the room as any agent does.
-  agentwire is only the transport underneath, the session and its delivery: messagent is a polylogue participant, not an agentwire product.
+  agentwire is only the transport underneath, the session and its delivery: messagent is a Vibe Together participant, not an agentwire product.
 - It uses the public relay by default, Luis's decision, rather than a relay on the user's machine:
   it is more unified, since a remote participant joins the same room, and most people "just want things to work zero-setup".
 - It is agnostic to the messenger, Luis's decision: each messenger connects on top with the capabilities it has.
@@ -32,7 +32,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   "just let telegram do all the things. the agent should just write whatever each messager can accept. fully raw, full power, nothing custom".
 - Agents never have to keep calling something to show they are typing, Luis's decision.
   No typing indicator for now, Luis's decision: "not needed".
-- The agent reaches messagent only through the polylogue room, with a command line: curl or the `agentwire` script.
+- The agent reaches messagent only through the Vibe Together room, with a command line: curl or the `agentwire` script.
   CLIs are preferred, Luis's decision: "CLI are the way to go in gerneral for harness-agnostic things."
   Every agent has a shell, Luis's decision: "a agent that cannot use a shell is not an agent in my definition".
 - Voice notes use the speech engines of voice mode, ElevenLabs and local, Luis's decision.
@@ -76,7 +76,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   whether it answers at once or only checks now and then is the user's choice,
   which suits an agent on a laptop that is sometimes closed.
   A session also ends once nobody has received in it for a week, Luis's decision (2026-11-06), which the bridge's own receive prevents.
-- Waking is solved outside polylogue, by impulse, Luis's decision: agentwire's blocking receive is the command an impulse waits on.
+- Waking is solved outside Vibe Together, by impulse, Luis's decision: agentwire's blocking receive is the command an impulse waits on.
   Until impulse exists, messagent wakes the agent itself: on the bridge's own receive, an entry for the agent while the agent isn't receiving runs the wake command.
   A participant has one receive at a time, so the bridge can't wait on the agent's.
 - A background process on the user's machine fetches the messages and stores them, Luis's decision:

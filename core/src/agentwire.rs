@@ -1,4 +1,4 @@
-//! The few operations of agentwire, the transport polylogue is built on, that the bridge uses:
+//! The few operations of agentwire, the transport Vibe Together is built on, that the bridge uses:
 //! `https://agentwire.agentics.lwirth.com/agentwire.md`.
 
 use std::{collections::BTreeMap, fmt, time::Duration};

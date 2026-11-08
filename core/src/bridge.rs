@@ -1,6 +1,6 @@
-//! The bridge: messagent as a participant in one polylogue room per chat, under the user's name,
-//! carrying the messenger chat in and out as polylogue speech
-//! (`https://polylogue.agentics.lwirth.com/speech.md`).
+//! The bridge: messagent as a participant in one Vibe Together room per chat, under the user's name,
+//! carrying the messenger chat in and out as Vibe Together speech
+//! (`https://vibe-together.agentics.lwirth.com/speech.md`).
 //! The room is an agentwire session, which is only its transport.
 //!
 //! What the user writes becomes their speech, and what the others say goes out to the user.

@@ -9,8 +9,8 @@ use messagent::{
     telegram::{self, Telegram},
 };
 
-/// The user's messenger chat with their agent, as a polylogue room:
-/// messagent takes part in it as the user, and carries the chat in and out as polylogue speech.
+/// The user's messenger chat with their agent, as a Vibe Together room:
+/// messagent takes part in it as the user, and carries the chat in and out as Vibe Together speech.
 /// Each messenger is a setup of its own: where a machine has several,
 /// `MESSAGENT_SETUP` names the one a command acts on.
 #[derive(Parser)]
