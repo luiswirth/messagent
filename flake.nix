@@ -60,7 +60,7 @@
         cargoLock = {
           lockFile = ./Cargo.lock;
           # agentwire's participant library, a git dependency.
-          outputHashes."agentwire-0.1.0" = "sha256-fx/onuBwC36DXenRhHqF1oc4kR2IkZBJAzJEPykGIoU=";
+          outputHashes."agentwire-0.1.0" = "sha256-Je57YAZOgWiGsfqEwf99fVfP2WImW8HPRsoG0PAw6Rw=";
         };
         nativeBuildInputs = [pkgs.pkg-config];
         buildInputs = [pkgs.libopus];

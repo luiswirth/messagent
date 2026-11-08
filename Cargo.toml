@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
-agentwire = { git = "https://github.com/luiswirth/agentwire", rev = "af5f960dfd65ff849bae9c189dd5f471ee8dc768" }
+agentwire = { git = "https://github.com/luiswirth/agentwire", rev = "06a510f4e91447c4f2b3a1b9e7bb2722e7c8c5db" }
 anyhow = "1"
 clap = { version = "4.6", features = ["derive"] }
 jiff = { version = "0.2", features = ["serde"] }
