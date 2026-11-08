@@ -44,8 +44,8 @@ enum Action {
 }
 
 const INSTRUCTIONS: &str = "The user's messenger chat is a Vibe Together room, \
-    whose link `messagent session` prints: what the user writes arrives as their speech \
-    (https://vibetogether.agentics.lwirth.com/speech.md), and what you say reaches them \
+    whose link `messagent session` prints: what the user writes arrives as their chat messages \
+    (https://vibetogether.agentics.lwirth.com/specs/chat.md), and what you say reaches them \
     in the messenger, plain text always. \
     The room is an agentwire session, and this Claude Code session is resumed at each wake, \
     in a new process, so take part with something that keeps your own link on disk, \

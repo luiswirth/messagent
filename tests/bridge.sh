@@ -111,18 +111,27 @@ curl -s --data-binary 'Hello, Luis.' "$agent" >/dev/null
 until_ 'bodies sendMessage | grep -q "Hello, Luis."' || true
 check "plain text goes out as it is" "$(bodies sendMessage | tail -1)" '{"chat_id": 42, "text": "Hello, Luis."}'
 
-curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
+curl -s -H 'Content-Type: application/vnd.agentwire.telegram.message+json' \
   --data-binary '{"text":"<b>bold</b>","parse_mode":"HTML","chat_id":7}' "$agent" >/dev/null
 until_ 'bodies sendMessage | grep -q bold' || true
 check "Telegram's own format goes out raw, to the user's chat" "$(bodies sendMessage | tail -1)" '{"chat_id": 42, "parse_mode": "HTML", "text": "<b>bold</b>"}'
+# The type it had before, taken for a while.
+curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
+  --data-binary '{"text":"old type"}' "$agent" >/dev/null
+until_ 'bodies sendMessage | grep -q "old type"' && r=yes || r=no
+check "the type a Telegram message had before still goes out" "$r" yes
+curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json; to="luis/messagent"' \
+  --data-binary '{"text":"older type"}' "$agent" >/dev/null
+until_ 'bodies sendMessage | grep -q "older type"' && r=yes || r=no
+check "and the one before that, addressed with to" "$r" yes
 
 hi_n=$(printf '%s\n' "$got" | grep '"text":"hi"' | field n)
-curl -s -H 'Content-Type: application/vnd.vibetogether.reactions.reaction+json' \
+curl -s -H 'Content-Type: application/vnd.agentwire.reactions.reaction+json' \
   --data-binary "{\"entry\":$hi_n,\"emoji\":\"👍\"}" "$agent" >/dev/null
 until_ '[ "$(bodies setMessageReaction | wc -l)" -ge 2 ]' || true
 check "the agent's reaction replaces the 👀" "$(bodies setMessageReaction | tail -1)" "{\"chat_id\": 42, \"message_id\": $hi, \"reaction\": [{\"emoji\": \"👍\", \"type\": \"emoji\"}]}"
 
-curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
+curl -s -H 'Content-Type: application/vnd.agentwire.telegram.message+json' \
   --data-binary '{"text":"x","parse_mode":"Nope"}' "$agent" >/dev/null
 until_ 'curl -s "$agent?wait=0" | grep -q "didn.t reach the user" ' && r=yes || r=no
 check "what Telegram refuses comes back as a notice" "$r" yes
@@ -174,7 +183,7 @@ photo_n=$(printf '%s\n' "$got" | grep -F '"type":"image/jpeg"' | field n)
 check "a photo the user sends becomes an image entry" "$([ -n "$photo_n" ] && echo yes)" yes
 curl -s -o "$work/got.jpg" "$agent/$photo_n"
 check "with the photo's bytes" "$(sha "$work/got.jpg")" "$(sha "$work/photo.jpg")"
-check "and its caption as speech after it" "$(printf '%s\n' "$got" | grep '"text":"Look at this."' | field n)" "$((photo_n + 1))"
+check "and its caption as a chat message after it" "$(printf '%s\n' "$got" | grep '"text":"Look at this."' | field n)" "$((photo_n + 1))"
 curl -s -d "{\"from\":42,\"document\":\"$(base64 -w0 "$work/page.png")\",\"file_name\":\"page.png\",\"mime_type\":\"image/png\"}" "http://127.0.0.1:$port/inject" >/dev/null
 until_ 'curl -s "$agent?after=0&wait=0" | grep -q "\"filename\":\"page.png\""' && r=yes || r=no
 check "an image the user sends as a file keeps its name" "$r" yes
@@ -186,7 +195,7 @@ curl -s -H 'Content-Type: image/png' --data-binary @"$work/page.png" "$agent?fil
 until_ 'bodies sendDocument | grep -q page.png' || true
 check "a lossless image goes out as a file, exact" "$(bodies sendDocument | tail -1 | grep -o "\"filename\": \"page.png\", \"sha256\": \"$(sha "$work/page.png")\"" | wc -l | tr -d ' ')" 1
 page_n=$(curl -s -H 'Content-Type: image/png; ping="luis/messagent"' --data-binary @"$work/page.png" "$agent?filename=page.png" | field n)
-curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json; ping="luis/messagent"' \
+curl -s -H 'Content-Type: application/vnd.agentwire.telegram.message+json; ping="luis/messagent"' \
   --data-binary "{\"document\":$page_n,\"caption\":\"<b>Today</b>\",\"parse_mode\":\"HTML\"}" "$agent" >/dev/null
 until_ 'bodies sendDocument | grep -q Today' || true
 check "Telegram's own format sends an entry's image, with a caption" "$(bodies sendDocument | tail -1 | grep -c '"caption": "<b>Today</b>".*"parse_mode": "HTML"')" 1

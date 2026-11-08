@@ -1,9 +1,9 @@
 //! The bridge: messagent as a participant in one Vibe Together room per chat, under the user's name,
-//! carrying the messenger chat in and out as Vibe Together speech
-//! (`https://vibetogether.agentics.lwirth.com/speech.md`).
+//! carrying the messenger chat in and out as Vibe Together chat
+//! (`https://vibetogether.agentics.lwirth.com/specs/chat.md`).
 //! The room is an agentwire session, which is only its transport.
 //!
-//! What the user writes becomes their speech, and what the others say goes out to the user.
+//! What the user writes becomes their chat messages, and what the others say goes out to the user.
 //! messagent's own notices come from a second participant, `<user>/messagent`,
 //! so that no one takes them for the user's words.
 //! The agent is the participant the config names: how far it has read marks the user's
@@ -36,9 +36,14 @@ use crate::{
 pub const WAKE_FAILED: &str =
     "Your agent couldn't be woken: the wake command failed. Your messages wait for it.";
 
-/// The type of what the user and messagent say: speech in plain text, which pings everyone
+/// The type of what the user and messagent say: a chat message in plain text, which pings everyone
 /// in the room, since everyone in the chat's room is in the conversation.
 const SPEECH: &str = "text/plain; charset=utf-8";
+
+/// Whether an entry is a message in the messenger's own format.
+fn is_native(messenger: &dyn Messenger, entry: &Entry) -> bool {
+    messenger.native().iter().any(|kind| entry.is(kind))
+}
 
 /// A type without its parameters, such as `ping`.
 fn base(kind: &str) -> String {
@@ -304,7 +309,7 @@ impl Bridge {
     }
 
     /// Takes in what arrived from the messenger.
-    /// An image comes first, and its caption after it, as the user's speech.
+    /// An image comes first, and its caption after it, as the user's chat message.
     fn arrived(&self, messenger: &dyn Messenger, arrived: Arrived) -> Result<()> {
         match arrived {
             Arrived::Message { id, image, text } => {
@@ -392,7 +397,7 @@ fn refused(error: &anyhow::Error) -> bool {
 impl Bridge {
     /// Carries one entry out to the user, if it is for them.
     fn out(&self, messenger: &dyn Messenger, entry: &Entry, session: &Session) -> Result<()> {
-        if entry.is(reactions::REACTION) {
+        if reactions::is_reaction(entry) {
             let reaction: Reaction = serde_json::from_str(entry.text.as_deref().unwrap_or(""))?;
             let Some(message) = session.messages.get(&reaction.entry) else {
                 return Ok(());
@@ -414,7 +419,7 @@ impl Bridge {
         };
         // What doesn't ping the user reaches them as an fyi, without a notification.
         let quiet = !entry.pings(&self.config.name);
-        if entry.is(messenger.native()) {
+        if is_native(messenger, entry) {
             let body = match &entry.text {
                 Some(text) => text.clone().into_bytes(),
                 None => self.relay.fetch(&session.me, entry.n)?.bytes,
@@ -455,7 +460,7 @@ impl Bridge {
             // One that pings messagent alone is for its use, such as an image a Telegram
             // message sends, and not for the user by itself; a message in the messenger's own
             // format is for messagent to carry out, whomever it pings.
-            let for_messagent = !entry.is(messenger.native())
+            let for_messagent = !is_native(messenger, entry)
                 && entry.ping().is_some_and(|names| {
                     !names.is_empty() && names.iter().all(|name| *name == notices_name(user))
                 });
