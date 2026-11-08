@@ -57,7 +57,11 @@
         pname = "messagent";
         version = "0.1.0";
         src = ./.;
-        cargoLock.lockFile = ./Cargo.lock;
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+          # agentwire's participant library, a git dependency.
+          outputHashes."agentwire-0.1.0" = "sha256-fx/onuBwC36DXenRhHqF1oc4kR2IkZBJAzJEPykGIoU=";
+        };
         nativeBuildInputs = [pkgs.pkg-config];
         buildInputs = [pkgs.libopus];
       };

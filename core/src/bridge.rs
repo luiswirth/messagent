@@ -21,6 +21,7 @@ use std::{
     time::Duration,
 };
 
+use ::agentwire::chat::{self, Ping};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -65,18 +66,18 @@ pub struct Session {
     pub notices: String,
     /// The last entry the bridge has handled.
     #[serde(default)]
-    pub after: i64,
+    pub after: u64,
     /// The user's entries, each with its message in the messenger.
     #[serde(default)]
-    pub messages: BTreeMap<i64, String>,
+    pub messages: BTreeMap<u64, String>,
     /// The user's entries the agent has not read yet, nor reacted to.
     #[serde(default)]
-    pub unseen: BTreeSet<i64>,
+    pub unseen: BTreeSet<u64>,
     /// The last entry for the agent, and how far the agent has read.
     #[serde(default)]
-    pub latest: i64,
+    pub latest: u64,
     #[serde(default)]
-    pub read: i64,
+    pub read: u64,
 }
 
 impl Session {
@@ -168,10 +169,7 @@ impl Backoff {
     }
 
     fn wait(&mut self, error: &anyhow::Error) {
-        let retry = error
-            .downcast_ref::<agentwire::Refusal>()
-            .and_then(|refusal| refusal.retry)
-            .map(Duration::from_secs);
+        let retry = agentwire::retry(error).map(Duration::from_secs);
         let pause = retry.unwrap_or(self.0);
         eprintln!("messagent watch: {error:#}; trying again in {pause:?}");
         thread::sleep(pause);
@@ -251,7 +249,7 @@ impl Bridge {
 
     /// Sends a payload with one of the bridge's own links, joining again if it left.
     /// It rides out passing failures, and starts a new session if the relay lost this one.
-    fn send(&self, notices: bool, kind: &str, filename: Option<&str>, body: &[u8]) -> Result<i64> {
+    fn send(&self, notices: bool, kind: &str, filename: Option<&str>, body: &[u8]) -> Result<u64> {
         let mut backoff = Backoff::new();
         loop {
             let (session, _) = self.ensure()?;
@@ -276,7 +274,7 @@ impl Bridge {
         }
     }
 
-    fn notice(&self, text: &str) -> Result<i64> {
+    fn notice(&self, text: &str) -> Result<u64> {
         self.send(true, SPEECH, None, text.as_bytes())
     }
 
@@ -382,6 +380,16 @@ pub fn plain(entry: &Entry, agent: &str) -> String {
     }
 }
 
+/// Whether an entry pings `name`, by chat's rule, under which an entry of a `vnd.` type
+/// is no message; a message in the messenger's own format pings as a message does.
+fn pings(entry: &Entry, name: &str, native: &str) -> bool {
+    if entry.is(native) {
+        Ping::of(&entry.kind).is_none_or(|ping| ping.pings(name))
+    } else {
+        chat::pings(&entry.kind, name)
+    }
+}
+
 /// Whether an error is the messenger refusing, or a message it can't take,
 /// rather than a failure that may pass.
 fn refused(error: &anyhow::Error) -> bool {
@@ -404,7 +412,7 @@ impl Bridge {
                 session.unseen.remove(&reaction.entry);
             });
         }
-        let image = |n: i64| -> Result<Image> {
+        let image = |n: u64| -> Result<Image> {
             let payload = self.relay.fetch(&session.me, n)?;
             Ok(Image {
                 kind: base(&payload.kind),
@@ -413,7 +421,7 @@ impl Bridge {
             })
         };
         // What doesn't ping the user reaches them as an fyi, without a notification.
-        let quiet = !entry.pings(&self.config.name);
+        let quiet = !pings(entry, &self.config.name, messenger.native());
         if entry.is(messenger.native()) {
             let body = match &entry.text {
                 Some(text) => text.clone().into_bytes(),
@@ -447,7 +455,7 @@ impl Bridge {
                 continue;
             }
             let seen = sort(entry, user);
-            let for_agents = entry.pings(agent);
+            let for_agents = pings(entry, agent, messenger.native());
             if seen != Seen::Nothing && entry.from != *agent && for_agents {
                 latest = entry.n;
                 fresh = true;
@@ -456,9 +464,8 @@ impl Bridge {
             // message sends, and not for the user by itself; a message in the messenger's own
             // format is for messagent to carry out, whomever it pings.
             let for_messagent = !entry.is(messenger.native())
-                && entry.ping().is_some_and(|names| {
-                    !names.is_empty() && names.iter().all(|name| *name == notices_name(user))
-                });
+                && matches!(Ping::of(&entry.kind), Some(Ping::Only(names))
+                    if !names.is_empty() && names.iter().all(|name| *name == notices_name(user)));
             if seen == Seen::Out && !for_messagent {
                 let current = self.current().unwrap_or_else(|| session.clone());
                 self.deliver(messenger, entry, &current)?;

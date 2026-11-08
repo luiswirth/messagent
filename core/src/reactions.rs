@@ -9,6 +9,6 @@ pub const REACTION: &str = "application/vnd.agentwire.reactions.reaction+json";
 /// an empty emoji takes it back.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Reaction {
-    pub entry: i64,
+    pub entry: u64,
     pub emoji: String,
 }

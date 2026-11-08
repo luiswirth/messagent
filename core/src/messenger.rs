@@ -78,7 +78,7 @@ pub trait Messages {
     fn send_native(
         &self,
         message: &[u8],
-        entry: &dyn Fn(i64) -> Result<Image>,
+        entry: &dyn Fn(u64) -> Result<Image>,
         quiet: bool,
     ) -> Result<String>;
 

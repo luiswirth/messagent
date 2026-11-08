@@ -40,6 +40,7 @@ curl -s -H 'Content-Type: application/vnd.agentwire.telegram.message+json' \
 
 An image or chat message that pings messagent alone never reaches the user by itself;
 a Telegram message always does, whomever it pings.
+A Telegram message without a `ping` pings everyone, as a chat message does.
 What doesn't ping the user reaches them without a notification.
 
 A message Telegram refuses, such as one whose formatting doesn't parse,

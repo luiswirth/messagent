@@ -140,7 +140,7 @@ impl Messages for Telegram {
     fn send_native(
         &self,
         message: &[u8],
-        entry: &dyn Fn(i64) -> Result<Image>,
+        entry: &dyn Fn(u64) -> Result<Image>,
         quiet: bool,
     ) -> Result<String> {
         let mut body: Map<String, Value> = serde_json::from_slice(message).context(
@@ -154,7 +154,7 @@ impl Messages for Telegram {
             let Some(value) = body.get(field) else {
                 continue;
             };
-            let n = value.as_i64().with_context(|| {
+            let n = value.as_u64().with_context(|| {
                 format!("its {field} is the number of the entry that holds the file")
             })?;
             let image = entry(n)?;

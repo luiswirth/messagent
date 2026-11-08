@@ -4,11 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+agentwire.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
 toml.workspace = true
 ureq.workspace = true
 
