@@ -76,12 +76,11 @@ pub struct Entry {
 impl Entry {
     /// Whom it pings, by chat's `ping` parameter of its type: `None` for everyone,
     /// which is also whom an entry without `ping` pings, and no name for no one.
-    /// `to`, which `ping` replaced, is still taken for a while so that no agent breaks.
     pub fn ping(&self) -> Option<Vec<String>> {
         let ping = self.kind.split(';').skip(1).find_map(|parameter| {
             let (key, value) = parameter.split_once('=')?;
-            let key = key.trim();
-            (key.eq_ignore_ascii_case("ping") || key.eq_ignore_ascii_case("to"))
+            key.trim()
+                .eq_ignore_ascii_case("ping")
                 .then(|| value.trim())
         })?;
         let names: Vec<String> = ping

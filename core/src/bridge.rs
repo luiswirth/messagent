@@ -40,11 +40,6 @@ pub const WAKE_FAILED: &str =
 /// in the room, since everyone in the chat's room is in the conversation.
 const SPEECH: &str = "text/plain; charset=utf-8";
 
-/// Whether an entry is a message in the messenger's own format.
-fn is_native(messenger: &dyn Messenger, entry: &Entry) -> bool {
-    messenger.native().iter().any(|kind| entry.is(kind))
-}
-
 /// A type without its parameters, such as `ping`.
 fn base(kind: &str) -> String {
     kind.split(';').next().unwrap_or("").trim().to_string()
@@ -397,7 +392,7 @@ fn refused(error: &anyhow::Error) -> bool {
 impl Bridge {
     /// Carries one entry out to the user, if it is for them.
     fn out(&self, messenger: &dyn Messenger, entry: &Entry, session: &Session) -> Result<()> {
-        if reactions::is_reaction(entry) {
+        if entry.is(reactions::REACTION) {
             let reaction: Reaction = serde_json::from_str(entry.text.as_deref().unwrap_or(""))?;
             let Some(message) = session.messages.get(&reaction.entry) else {
                 return Ok(());
@@ -419,7 +414,7 @@ impl Bridge {
         };
         // What doesn't ping the user reaches them as an fyi, without a notification.
         let quiet = !entry.pings(&self.config.name);
-        if is_native(messenger, entry) {
+        if entry.is(messenger.native()) {
             let body = match &entry.text {
                 Some(text) => text.clone().into_bytes(),
                 None => self.relay.fetch(&session.me, entry.n)?.bytes,
@@ -460,7 +455,7 @@ impl Bridge {
             // One that pings messagent alone is for its use, such as an image a Telegram
             // message sends, and not for the user by itself; a message in the messenger's own
             // format is for messagent to carry out, whomever it pings.
-            let for_messagent = !is_native(messenger, entry)
+            let for_messagent = !entry.is(messenger.native())
                 && entry.ping().is_some_and(|names| {
                     !names.is_empty() && names.iter().all(|name| *name == notices_name(user))
                 });

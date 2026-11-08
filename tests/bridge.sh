@@ -115,15 +115,6 @@ curl -s -H 'Content-Type: application/vnd.agentwire.telegram.message+json' \
   --data-binary '{"text":"<b>bold</b>","parse_mode":"HTML","chat_id":7}' "$agent" >/dev/null
 until_ 'bodies sendMessage | grep -q bold' || true
 check "Telegram's own format goes out raw, to the user's chat" "$(bodies sendMessage | tail -1)" '{"chat_id": 42, "parse_mode": "HTML", "text": "<b>bold</b>"}'
-# The type it had before, taken for a while.
-curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
-  --data-binary '{"text":"old type"}' "$agent" >/dev/null
-until_ 'bodies sendMessage | grep -q "old type"' && r=yes || r=no
-check "the type a Telegram message had before still goes out" "$r" yes
-curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json; to="luis/messagent"' \
-  --data-binary '{"text":"older type"}' "$agent" >/dev/null
-until_ 'bodies sendMessage | grep -q "older type"' && r=yes || r=no
-check "and the one before that, addressed with to" "$r" yes
 
 hi_n=$(printf '%s\n' "$got" | grep '"text":"hi"' | field n)
 curl -s -H 'Content-Type: application/vnd.agentwire.reactions.reaction+json' \

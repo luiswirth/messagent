@@ -22,12 +22,6 @@ use crate::{
 /// where its `photo` or `document` is the number of the entry that holds the file.
 pub const NATIVE: &str = "application/vnd.agentwire.telegram.message+json";
 
-/// The types a Telegram message had before, still taken for a while so that no agent breaks.
-const NATIVE_BEFORE: [&str; 2] = [
-    "application/vnd.vibetogether.telegram.message+json",
-    "application/vnd.vibe-together.telegram.message+json",
-];
-
 /// How long Telegram keeps an update that no one fetched.
 pub const KEPT: SignedDuration = SignedDuration::from_hours(24);
 
@@ -114,8 +108,8 @@ impl Messages for Telegram {
         Ok(sent.message_id.to_string())
     }
 
-    fn native(&self) -> &'static [&'static str] {
-        &[NATIVE, NATIVE_BEFORE[0], NATIVE_BEFORE[1]]
+    fn native(&self) -> &'static str {
+        NATIVE
     }
 
     fn send_image(&self, image: &Image, quiet: bool) -> Result<String> {

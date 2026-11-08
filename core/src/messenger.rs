@@ -70,8 +70,7 @@ pub trait Messages {
     fn download(&self, file: &File) -> Result<Vec<u8>>;
 
     /// The type of an entry in the messenger's own format, which `send_native` passes to it raw.
-    /// The first is the type it has now; any after it, ones it had before and still takes.
-    fn native(&self) -> &'static [&'static str];
+    fn native(&self) -> &'static str;
 
     /// Sends a message in the messenger's own format, as is, and returns its id.
     /// Where it names an entry of the room for a file, `entry` gives its payload;
