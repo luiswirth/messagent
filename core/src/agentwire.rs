@@ -13,6 +13,16 @@ pub const RELAY: &str = "https://agentwire.agentics.lwirth.com";
 pub const JOIN: &str = "application/vnd.agentwire.join";
 pub const LEAVE: &str = "application/vnd.agentwire.leave";
 
+/// The largest payload the relay takes, in bytes.
+const MAX_PAYLOAD: u64 = 10 * 1024 * 1024;
+
+/// An entry's payload, as fetched.
+pub struct Payload {
+    pub kind: String,
+    pub filename: Option<String>,
+    pub bytes: Vec<u8>,
+}
+
 /// How long a receive waits at most, in seconds, before it is made again.
 const WAIT: u64 = 50;
 
@@ -161,14 +171,20 @@ impl Relay {
     }
 
     /// Sends a payload of type `kind`, and returns its entry's number.
-    pub fn send(&self, me: &str, kind: &str, body: &[u8]) -> Result<i64> {
+    /// Sends a payload of type `kind`, named as a file where it has a name,
+    /// and returns its entry's number.
+    pub fn send(&self, me: &str, kind: &str, filename: Option<&str>, body: &[u8]) -> Result<i64> {
         #[derive(Deserialize)]
         struct Sent {
             n: i64,
         }
+        let url = match filename {
+            Some(name) => format!("{me}?filename={}", encode(name)),
+            None => me.to_string(),
+        };
         let response = self
             .agent
-            .post(me)
+            .post(&url)
             .header("Content-Type", kind)
             .send(body)?;
         let sent: Sent = serde_json::from_str(&Self::answer(response)?)?;
@@ -194,14 +210,55 @@ impl Relay {
         Ok(received)
     }
 
-    /// The payload of entry `n`.
-    pub fn fetch(&self, me: &str, n: i64) -> Result<Vec<u8>> {
+    /// The payload of entry `n`, with its type and, where it has one, its file name.
+    pub fn fetch(&self, me: &str, n: i64) -> Result<Payload> {
         let mut response = self.agent.get(&format!("{me}/{n}")).call()?;
         if response.status() != 200 {
-            return Self::answer(response).map(String::into_bytes);
+            Self::answer(response)?;
+            anyhow::bail!("the relay answered with no payload");
         }
-        Ok(response.body_mut().read_to_vec()?)
+        let header = |name: &str| {
+            response
+                .headers()
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string)
+        };
+        let kind = header("content-type").unwrap_or_else(|| "application/octet-stream".into());
+        let filename = header("content-disposition").and_then(|value| filename(&value));
+        let bytes = response
+            .body_mut()
+            .with_config()
+            .limit(MAX_PAYLOAD)
+            .read_to_vec()?;
+        Ok(Payload {
+            kind,
+            filename,
+            bytes,
+        })
     }
+}
+
+/// The file name in a `Content-Disposition`, as the relay gives it: `filename*=UTF-8''<encoded>`.
+fn filename(disposition: &str) -> Option<String> {
+    let (_, encoded) = disposition.split_once("filename*=UTF-8''")?;
+    let encoded = encoded.split(';').next()?.trim().as_bytes();
+    let mut bytes = Vec::new();
+    let mut i = 0;
+    while i < encoded.len() {
+        if encoded[i] == b'%'
+            && let Some(byte) = encoded
+                .get(i + 1..i + 3)
+                .and_then(|hex| u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok())
+        {
+            bytes.push(byte);
+            i += 3;
+        } else {
+            bytes.push(encoded[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(bytes).ok()
 }
 
 /// URL-encoded for a query.
@@ -214,4 +271,16 @@ fn encode(text: &str) -> String {
             _ => format!("%{byte:02X}"),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_file_name_is_decoded() {
+        assert_eq!(
+            super::filename("inline; filename*=UTF-8''page%20one.png").as_deref(),
+            Some("page one.png")
+        );
+        assert_eq!(super::filename("inline"), None);
+    }
 }

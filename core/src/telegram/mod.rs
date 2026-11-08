@@ -4,7 +4,7 @@ mod bot;
 
 use std::{fs, io::ErrorKind, path::PathBuf, thread, time::Duration};
 
-pub use bot::{API, Bot, MESSAGE_LIMIT, Message, Refusal, Update, User};
+pub use bot::{API, Bot, MESSAGE_LIMIT, Message, Refusal, Update, Upload, User};
 
 use anyhow::{Context, Result};
 use jiff::{SignedDuration, Timestamp};
@@ -14,11 +14,12 @@ use serde_json::{Map, Value};
 use crate::{
     Paths,
     config::write_private,
-    messenger::{Arrived, CONNECTED, Messages, Messenger, Reactions, Stranger, split},
+    messenger::{Arrived, CONNECTED, File, Image, Messages, Messenger, Reactions, Stranger, split},
 };
 
 /// The type of a message in Telegram's own format: the body of the Bot API's `sendMessage`,
-/// passed to it as is, with the chat set by messagent.
+/// passed to it as is, with the chat set by messagent; or of `sendPhoto` or `sendDocument`,
+/// where its `photo` or `document` is the number of the entry that holds the file.
 pub const NATIVE: &str = "application/vnd.vibe-together.telegram.message+json";
 
 /// How long Telegram keeps an update that no one fetched.
@@ -109,10 +110,48 @@ impl Messages for Telegram {
         NATIVE
     }
 
-    fn send_native(&self, message: &[u8]) -> Result<String> {
-        let body: Map<String, Value> = serde_json::from_slice(message)
-            .context("a Telegram message is a JSON object, the body of sendMessage")?;
-        let sent = self.bot.send_raw(self.user()?, body)?;
+    fn send_image(&self, image: &Image) -> Result<String> {
+        let user = self.user()?;
+        let upload = upload(image);
+        // A photo is recompressed to a JPEG of limited size, which suits a JPEG, such as a
+        // photograph; any other image goes as a document, so that it arrives exact,
+        // such as a page of text. One Telegram refuses as a photo goes as a document too.
+        if is_jpeg(&image.kind)
+            && let Ok(sent) = self
+                .bot
+                .send_file(user, "sendPhoto", "photo", &upload, Map::new())
+        {
+            return Ok(sent.message_id.to_string());
+        }
+        let sent = self
+            .bot
+            .send_file(user, "sendDocument", "document", &upload, Map::new())?;
+        Ok(sent.message_id.to_string())
+    }
+
+    fn download(&self, file: &File) -> Result<Vec<u8>> {
+        self.bot.download(&file.id)
+    }
+
+    fn send_native(&self, message: &[u8], entry: &dyn Fn(i64) -> Result<Image>) -> Result<String> {
+        let body: Map<String, Value> = serde_json::from_slice(message).context(
+            "a Telegram message is a JSON object, the body of sendMessage, sendPhoto or sendDocument",
+        )?;
+        let user = self.user()?;
+        for (method, field) in [("sendPhoto", "photo"), ("sendDocument", "document")] {
+            let Some(value) = body.get(field) else {
+                continue;
+            };
+            let n = value.as_i64().with_context(|| {
+                format!("its {field} is the number of the entry that holds the file")
+            })?;
+            let image = entry(n)?;
+            let sent = self
+                .bot
+                .send_file(user, method, field, &upload(&image), body)?;
+            return Ok(sent.message_id.to_string());
+        }
+        let sent = self.bot.send_raw(user, body)?;
         Ok(sent.message_id.to_string())
     }
 
@@ -204,9 +243,15 @@ pub fn take(state: &mut State, now: Timestamp, updates: Vec<Update>) -> Fetched 
         match state.user {
             Some(user) if user == sender.id => {
                 if private {
+                    let image = image_of(&message);
+                    let text = match image {
+                        Some(_) => message.caption.clone(),
+                        None => Some(text_of(&message)),
+                    };
                     fetched.arrived.push(Arrived::Message {
                         id: message.message_id.to_string(),
-                        text: text_of(&message),
+                        image,
+                        text,
                     });
                 }
             }
@@ -246,7 +291,48 @@ fn opens_with(message: &Message, code: Option<&str>) -> bool {
     text == code || text.strip_prefix("/start").map(str::trim) == Some(code)
 }
 
-/// The text of a message, with a note on what else it carries that the log can't hold yet.
+/// The image a message carries, as a photo or as a file of an image type.
+fn image_of(message: &Message) -> Option<File> {
+    if let Some(largest) = message.photo.as_ref().and_then(|sizes| sizes.last()) {
+        return Some(File {
+            id: largest.file_id.clone(),
+            kind: "image/jpeg".into(),
+            filename: None,
+        });
+    }
+    let document = message.document.as_ref()?;
+    let kind = document.mime_type.as_deref()?;
+    kind.starts_with("image/").then(|| File {
+        id: document.file_id.clone(),
+        kind: kind.into(),
+        filename: document.file_name.clone(),
+    })
+}
+
+fn is_jpeg(kind: &str) -> bool {
+    let base = kind.split(';').next().unwrap_or("").trim();
+    base.eq_ignore_ascii_case("image/jpeg") || base.eq_ignore_ascii_case("image/jpg")
+}
+
+/// An image as Telegram takes a file: with a name, made up from its type where it has none.
+fn upload(image: &Image) -> Upload<'_> {
+    let filename = image.filename.as_deref().unwrap_or(
+        match image.kind.split(';').next().unwrap_or("").trim() {
+            "image/jpeg" => "image.jpg",
+            "image/png" => "image.png",
+            "image/gif" => "image.gif",
+            "image/webp" => "image.webp",
+            _ => "image",
+        },
+    );
+    Upload {
+        filename,
+        kind: &image.kind,
+        bytes: &image.bytes,
+    }
+}
+
+/// The text of a message, with a note on what else it carries that messagent can't carry yet.
 fn text_of(message: &Message) -> String {
     if let Some(text) = &message.text {
         return text.clone();
@@ -266,9 +352,13 @@ fn text_of(message: &Message) -> String {
     ];
     let kind = kinds
         .iter()
-        .find(|(field, _)| message.rest.contains_key(*field))
+        .find(|(field, _)| match *field {
+            "photo" => message.photo.is_some(),
+            "document" => message.document.is_some(),
+            field => message.rest.contains_key(field),
+        })
         .map_or("message", |(_, kind)| kind);
-    let note = format!("[{kind}: messagent carries only text so far]");
+    let note = format!("[{kind}: messagent carries only text and images so far]");
     match &message.caption {
         Some(caption) => format!("{caption}\n{note}"),
         None => note,

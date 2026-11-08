@@ -28,7 +28,7 @@ use crate::{
     Config, Paths,
     agentwire::{self, Entry, JOIN, LEAVE, Received, Relay},
     config::write_private,
-    messenger::{self, Arrived, Messenger, Stranger},
+    messenger::{self, Arrived, Image, Messenger, Stranger},
     reactions::{self, Reaction},
 };
 
@@ -39,6 +39,25 @@ pub const WAKE_FAILED: &str =
 /// The type of what the user and messagent say: speech in plain text, to everyone in the room,
 /// since everyone in the chat's room is in the conversation.
 const SPEECH: &str = "text/plain; charset=utf-8; to=\"*\"";
+
+/// A type as speech the user says, to everyone in the room.
+fn speech(kind: &str) -> String {
+    format!("{kind}; to=\"*\"")
+}
+
+/// A type without its parameters, such as `to`.
+fn base(kind: &str) -> String {
+    kind.split(';').next().unwrap_or("").trim().to_string()
+}
+
+/// Whether an entry is an image, by the base of its type.
+fn is_image(entry: &Entry) -> bool {
+    entry
+        .kind
+        .split(';')
+        .next()
+        .is_some_and(|base| base.trim().to_ascii_lowercase().starts_with("image/"))
+}
 
 /// The chat's room, its agentwire session, as the bridge keeps it across runs.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -237,7 +256,7 @@ impl Bridge {
 
     /// Sends a payload with one of the bridge's own links, joining again if it left.
     /// It rides out passing failures, and starts a new session if the relay lost this one.
-    fn send(&self, notices: bool, kind: &str, body: &[u8]) -> Result<i64> {
+    fn send(&self, notices: bool, kind: &str, filename: Option<&str>, body: &[u8]) -> Result<i64> {
         let mut backoff = Backoff::new();
         loop {
             let (session, _) = self.ensure()?;
@@ -246,7 +265,7 @@ impl Bridge {
             } else {
                 &session.me
             };
-            match self.relay.send(me, kind, body) {
+            match self.relay.send(me, kind, filename, body) {
                 Ok(n) => return Ok(n),
                 Err(error) => match agentwire::status(&error) {
                     Some(404) => self.forget(&session.link),
@@ -263,18 +282,44 @@ impl Bridge {
     }
 
     fn notice(&self, text: &str) -> Result<i64> {
-        self.send(true, SPEECH, text.as_bytes())
+        self.send(true, SPEECH, None, text.as_bytes())
+    }
+
+    /// Sends what the user said, as theirs, and keeps which message of the messenger it is.
+    fn said(&self, id: &str, kind: &str, filename: Option<&str>, body: &[u8]) -> Result<()> {
+        let n = self.send(false, kind, filename, body)?;
+        self.update(|session| {
+            session.messages.insert(n, id.to_string());
+            session.unseen.insert(n);
+        })
+    }
+
+    /// Carries an image the user sent into the room, as an entry of its type,
+    /// or a note that it couldn't be where that fails, such as one too large for the relay.
+    fn image(&self, messenger: &dyn Messenger, id: &str, file: &messenger::File) -> Result<()> {
+        let sent = messenger
+            .download(file)
+            .and_then(|bytes| self.said(id, &speech(&file.kind), file.filename.as_deref(), &bytes));
+        if let Err(error) = sent {
+            eprintln!("messagent watch: can't carry an image into the room: {error:#}");
+            let note = format!("[an image messagent couldn't carry: {error:#}]");
+            self.said(id, SPEECH, None, note.as_bytes())?;
+        }
+        Ok(())
     }
 
     /// Takes in what arrived from the messenger.
-    fn arrived(&self, arrived: Arrived) -> Result<()> {
+    /// An image comes first, and its caption after it, as the user's speech.
+    fn arrived(&self, messenger: &dyn Messenger, arrived: Arrived) -> Result<()> {
         match arrived {
-            Arrived::Message { id, text } => {
-                let n = self.send(false, SPEECH, text.as_bytes())?;
-                self.update(|session| {
-                    session.messages.insert(n, id);
-                    session.unseen.insert(n);
-                })
+            Arrived::Message { id, image, text } => {
+                if let Some(file) = &image {
+                    self.image(messenger, &id, file)?;
+                }
+                match text.filter(|text| !text.is_empty()) {
+                    Some(text) => self.said(&id, SPEECH, None, text.as_bytes()),
+                    None => Ok(()),
+                }
             }
             Arrived::Notice(text) => self.notice(&text).map(drop),
             Arrived::Stranger(stranger) => log_stranger(&self.paths, &stranger),
@@ -330,7 +375,7 @@ pub fn plain(entry: &Entry, agent: &str) -> String {
                 .map(|name| format!(" {name}"))
                 .unwrap_or_default();
             format!(
-                "[a file{file} ({}): messagent carries only text so far]",
+                "[a file{file} ({}): messagent carries only text and images so far]",
                 entry.kind
             )
         }
@@ -364,12 +409,24 @@ impl Bridge {
                 session.unseen.remove(&reaction.entry);
             });
         }
+        let image = |n: i64| -> Result<Image> {
+            let payload = self.relay.fetch(&session.me, n)?;
+            Ok(Image {
+                kind: base(&payload.kind),
+                filename: payload.filename,
+                bytes: payload.bytes,
+            })
+        };
         if entry.is(messenger.native()) {
             let body = match &entry.text {
                 Some(text) => text.clone().into_bytes(),
-                None => self.relay.fetch(&session.me, entry.n)?,
+                None => self.relay.fetch(&session.me, entry.n)?.bytes,
             };
-            messenger.send_native(&body)?;
+            messenger.send_native(&body, &image)?;
+            return Ok(());
+        }
+        if is_image(entry) {
+            messenger.send_image(&image(entry.n)?)?;
             return Ok(());
         }
         for part in messenger.split(&plain(entry, &self.config.agent)) {
@@ -398,7 +455,12 @@ impl Bridge {
                 latest = entry.n;
                 fresh = true;
             }
-            if seen == Seen::Out {
+            // One addressed to messagent alone is for its use, such as an image a Telegram
+            // message sends, and not for the user by itself.
+            let for_messagent = entry
+                .to()
+                .is_some_and(|to| to.iter().all(|name| *name == notices_name(user)));
+            if seen == Seen::Out && !for_messagent {
                 let current = self.current().unwrap_or_else(|| session.clone());
                 self.deliver(messenger, entry, &current)?;
             }
@@ -515,7 +577,7 @@ pub fn watch(paths: &Paths) -> Result<()> {
             listening = true;
         }
         for arrived in messenger.receive()? {
-            bridge.arrived(arrived)?;
+            bridge.arrived(messenger.as_ref(), arrived)?;
         }
     }
 }

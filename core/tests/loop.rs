@@ -46,7 +46,13 @@ fn texts(arrived: &[Arrived]) -> Vec<String> {
     arrived
         .iter()
         .map(|arrived| match arrived {
-            Arrived::Message { text, .. } => text.clone(),
+            Arrived::Message { image, text, .. } => {
+                let image = image
+                    .as_ref()
+                    .map(|file| format!("[{} {}] ", file.kind, file.id))
+                    .unwrap_or_default();
+                format!("{image}{}", text.as_deref().unwrap_or(""))
+            }
             Arrived::Notice(text) => format!("notice: {text}"),
             Arrived::Stranger(stranger) => format!("stranger {}: {}", stranger.id, stranger.text),
         })
@@ -64,17 +70,13 @@ fn only_the_users_private_messages_get_through_and_strangers_are_kept_apart() {
             4,
             USER,
             "private",
-            json!({ "photo": [], "caption": "look" }),
+            json!({ "photo": [{ "file_id": "small" }, { "file_id": "big" }], "caption": "look" }),
         ),
     ];
     let fetched = take(&mut state, Timestamp::now(), updates);
     assert_eq!(
         texts(&fetched.arrived),
-        [
-            "mine",
-            "stranger 7: a stranger's",
-            "look\n[photo: messagent carries only text so far]"
-        ]
+        ["mine", "stranger 7: a stranger's", "[image/jpeg big] look"]
     );
     assert!(matches!(&fetched.arrived[0], Arrived::Message { id, .. } if id == "1"));
     assert_eq!(state.offset, 5);
@@ -205,4 +207,37 @@ fn a_failing_wake_is_reported_once_per_streak() {
     waker.wake();
     settle();
     assert_eq!(reported.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn an_image_file_is_an_image_and_any_other_file_a_note() {
+    let mut state = connected();
+    let updates = vec![
+        update(
+            1,
+            USER,
+            "private",
+            json!({ "document": { "file_id": "page", "file_name": "page.png", "mime_type": "image/png" } }),
+        ),
+        update(
+            2,
+            USER,
+            "private",
+            json!({ "document": { "file_id": "doc", "file_name": "a.pdf", "mime_type": "application/pdf" } }),
+        ),
+        update(3, USER, "private", json!({ "photo": [{ "file_id": "p" }] })),
+    ];
+    let fetched = take(&mut state, Timestamp::now(), updates);
+    assert_eq!(
+        texts(&fetched.arrived),
+        [
+            "[image/png page] ",
+            "[file: messagent carries only text and images so far]",
+            "[image/jpeg p] "
+        ]
+    );
+    assert!(matches!(
+        &fetched.arrived[0],
+        Arrived::Message { image: Some(file), .. } if file.filename.as_deref() == Some("page.png")
+    ));
 }

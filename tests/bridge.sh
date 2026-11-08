@@ -161,6 +161,36 @@ curl -s --data-binary 'Me too.' "$joined" >/dev/null
 until_ 'bodies sendMessage | grep -q "Me too."' || true
 check "someone else's message names them" "$(bodies sendMessage | tail -1)" '{"chat_id": 42, "text": "ben: Me too."}'
 
+# Images, both ways.
+head -c 3000 /dev/urandom >"$work/photo.jpg"
+head -c 5000 /dev/urandom >"$work/page.png"
+sha() { sha256sum "$1" | cut -d' ' -f1; }
+curl -s "$agent?wait=0" >/dev/null
+curl -s -d "{\"from\":42,\"photo\":\"$(base64 -w0 "$work/photo.jpg")\",\"caption\":\"Look at this.\"}" "http://127.0.0.1:$port/inject" >/dev/null
+until_ 'curl -s "$agent?after=0&wait=0" | grep -q "Look at this."' || true
+got=$(curl -s "$agent?after=0&wait=0")
+photo_n=$(printf '%s\n' "$got" | grep -F '"type":"image/jpeg; to=\"*\""' | field n)
+check "a photo the user sends becomes an image entry" "$([ -n "$photo_n" ] && echo yes)" yes
+curl -s -o "$work/got.jpg" "$agent/$photo_n"
+check "with the photo's bytes" "$(sha "$work/got.jpg")" "$(sha "$work/photo.jpg")"
+check "and its caption as speech after it" "$(printf '%s\n' "$got" | grep '"text":"Look at this."' | field n)" "$((photo_n + 1))"
+curl -s -d "{\"from\":42,\"document\":\"$(base64 -w0 "$work/page.png")\",\"file_name\":\"page.png\",\"mime_type\":\"image/png\"}" "http://127.0.0.1:$port/inject" >/dev/null
+until_ 'curl -s "$agent?after=0&wait=0" | grep -q "\"filename\":\"page.png\""' && r=yes || r=no
+check "an image the user sends as a file keeps its name" "$r" yes
+
+curl -s -H 'Content-Type: image/jpeg; to="*"' --data-binary @"$work/photo.jpg" "$agent" >/dev/null
+until_ 'bodies sendPhoto | grep -q sha256' || true
+check "an image the agent sends goes out as a photo" "$(bodies sendPhoto | tail -1 | grep -o "\"sha256\": \"$(sha "$work/photo.jpg")\"" | wc -l | tr -d ' ')" 1
+curl -s -H 'Content-Type: image/png; to="*"' --data-binary @"$work/page.png" "$agent?filename=page.png" >/dev/null
+until_ 'bodies sendDocument | grep -q page.png' || true
+check "a lossless image goes out as a file, exact" "$(bodies sendDocument | tail -1 | grep -o "\"filename\": \"page.png\", \"sha256\": \"$(sha "$work/page.png")\"" | wc -l | tr -d ' ')" 1
+page_n=$(curl -s -H 'Content-Type: image/png; to="luis/messagent"' --data-binary @"$work/page.png" "$agent?filename=page.png" | field n)
+curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json' \
+  --data-binary "{\"document\":$page_n,\"caption\":\"<b>Today</b>\",\"parse_mode\":\"HTML\"}" "$agent" >/dev/null
+until_ 'bodies sendDocument | grep -q Today' || true
+check "Telegram's own format sends an entry's image, with a caption" "$(bodies sendDocument | tail -1 | grep -c '"caption": "<b>Today</b>".*"parse_mode": "HTML"')" 1
+check "and the image entry for messagent alone doesn't go out by itself" "$(bodies sendDocument | wc -l | tr -d ' ')" 2
+
 kill "$watch"
 wait "$watch" 2>/dev/null || true
 watch=

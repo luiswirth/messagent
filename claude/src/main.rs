@@ -51,7 +51,8 @@ const INSTRUCTIONS: &str = "The user's messenger chat is a Vibe Together room, \
     in a new process, so take part with something that keeps your own link on disk, \
     such as the agentwire script: \
     `curl -so agentwire https://agentwire.agentics.lwirth.com/agentwire`, then `sh agentwire help`. \
-    Telegram's own formatting, and reacting to a message, are entries of their own: \
+    Images go both ways as image entries: fetch one the user sends by its number. \
+    Telegram's own formatting, captions, and reacting to a message, are entries of their own: \
     https://raw.githubusercontent.com/luiswirth/messagent/main/telegram.md and \
     https://raw.githubusercontent.com/luiswirth/messagent/main/reactions.md. \
     You are told here when entries wait for you.";

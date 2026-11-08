@@ -13,12 +13,35 @@ use crate::{
 /// What arrives from the messenger.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Arrived {
-    /// A message of the user, which goes into the session as theirs.
-    Message { id: String, text: String },
+    /// A message of the user, which goes into the room as theirs:
+    /// an image, a text, or an image with a caption.
+    Message {
+        id: String,
+        image: Option<File>,
+        text: Option<String>,
+    },
     /// A notice of messagent's own about the chat, such as that messages may be lost.
     Notice(String),
     /// A message of someone else, which is logged on this machine and goes no further.
     Stranger(Stranger),
+}
+
+/// A file the messenger holds, not downloaded yet.
+#[derive(Debug, Clone, PartialEq)]
+pub struct File {
+    /// Its id in the messenger.
+    pub id: String,
+    /// Its MIME type.
+    pub kind: String,
+    pub filename: Option<String>,
+}
+
+/// An image, with its MIME type and, where it has one, its file name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Image {
+    pub kind: String,
+    pub filename: Option<String>,
+    pub bytes: Vec<u8>,
 }
 
 /// A message from someone other than the user, as one line of the strangers' log.
@@ -39,11 +62,18 @@ pub trait Messages {
     /// Sends one message of plain text to the user, and returns its id.
     fn send(&self, message: &str) -> Result<String>;
 
+    /// Sends an image to the user, and returns its message's id.
+    fn send_image(&self, image: &Image) -> Result<String>;
+
+    /// The bytes of a file the user sent.
+    fn download(&self, file: &File) -> Result<Vec<u8>>;
+
     /// The type of an entry in the messenger's own format, which `send_native` passes to it raw.
     fn native(&self) -> &'static str;
 
     /// Sends a message in the messenger's own format, as is, and returns its id.
-    fn send_native(&self, message: &[u8]) -> Result<String>;
+    /// Where it names an entry of the room for a file, `entry` gives its payload.
+    fn send_native(&self, message: &[u8], entry: &dyn Fn(i64) -> Result<Image>) -> Result<String>;
 
     /// Waits for what arrives next.
     /// It rides out passing failures itself, so an error is one that ends watching.
