@@ -4,7 +4,6 @@ Message and call your agent in a messaging app, like a friend.
 "messagent" is the name, Luis's decision.
 The flagship for now, Luis's decision: "the messenger chat is soooo simple. everybody will udnerstand it."
 It may subsume voice mode.
-Vibe Together's `chat` stays, as a reference, Luis's decision.
 A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's decision.
 
 ## Decided
@@ -14,7 +13,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
 - It is the actual phone experience, Luis's decision: Discord is no fit as the main messenger, since it is not a phone messenger people are used to.
 - The UI is the messenger: no UI of our own, everything is infrastructure and backend, Luis's decision.
 - It is built on Vibe Together, Luis's decision (2026-11-06), replacing "without polylogue for now":
-  messagent is a participant in a Vibe Together room, Luis's framing: it carries the messenger chat in and out, as Vibe Together speech,
+  messagent is a participant in a Vibe Together room, Luis's framing: it carries the messenger chat in and out, as Vibe Together's chat extension,
   as programs and engines are participants (vibetogether-project's `direction.md`).
   It joins as the user; the agent joins the room as any agent does.
   agentwire is only the transport underneath, the session and its delivery: messagent is a Vibe Together participant, not an agentwire product.
