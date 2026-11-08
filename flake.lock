@@ -9,11 +9,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1793925954,
-        "narHash": "sha256-VrEZxjmCnISNnziMU+lWolIeARWJW0I6oULGPEhoQx8=",
+        "lastModified": 1794168159,
+        "narHash": "sha256-ZbnI40O3jW/ziPduzeTuHXvAv4bqBrTiBhJ7C7JWmNA=",
         "owner": "luiswirth",
         "repo": "agentwire",
-        "rev": "a1c26f8779417545f07c807493d1fe4c7dc47f21",
+        "rev": "7ec01bdfcd3a475d27529bb71de69ba91c79ca1d",
         "type": "github"
       },
       "original": {
