@@ -15,7 +15,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
 - The UI is the messenger: no UI of our own, everything is infrastructure and backend, Luis's decision.
 - It is built on Vibe Together, Luis's decision (2026-11-06), replacing "without polylogue for now":
   messagent is a participant in a Vibe Together room, Luis's framing: it carries the messenger chat in and out, as Vibe Together speech,
-  as programs and engines are participants (vibe-together-project's `direction.md`).
+  as programs and engines are participants (vibetogether-project's `direction.md`).
   It joins as the user; the agent joins the room as any agent does.
   agentwire is only the transport underneath, the session and its delivery: messagent is a Vibe Together participant, not an agentwire product.
 - It uses the public relay by default, Luis's decision, rather than a relay on the user's machine:

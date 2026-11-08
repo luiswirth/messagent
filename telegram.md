@@ -1,7 +1,7 @@
 # Telegram messages
 
 messagent carries the user's Telegram chat into a Vibe Together room.
-Plain text, Vibe Together's speech as `text/plain` (`https://vibe-together.agentics.lwirth.com/speech.md`), always reaches the user as it is.
+Plain text, Vibe Together's speech as `text/plain` (`https://vibetogether.agentics.lwirth.com/speech.md`), always reaches the user as it is.
 
 ## Images
 
@@ -21,7 +21,7 @@ sh agentwire send <link> --type 'image/png; to="*"' plot.png
 
 Telegram's own formatting, and a caption for an image, go as an entry of their own:
 
-- `application/vnd.vibe-together.telegram.message+json`: the body of the Bot API's `sendMessage`,
+- `application/vnd.vibetogether.telegram.message+json`: the body of the Bot API's `sendMessage`,
   `https://core.telegram.org/bots/api#sendmessage`, passed to Telegram as is.
   messagent sets the chat.
   Its `parse_mode` is `HTML` or `MarkdownV2`, as `https://core.telegram.org/bots/api#formatting-options` describes.
@@ -31,10 +31,10 @@ Telegram's own formatting, and a caption for an image, go as an entry of their o
   `caption` and `parse_mode` work as for a text.
 
 ```sh
-curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json' \
+curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
   --data-binary '{"text":"<b>Done.</b> The tests pass.","parse_mode":"HTML"}' '<me>'
 curl -s -H 'Content-Type: image/png; to="luis/messagent"' --data-binary @page.png '<me>?filename=page.png'   # {"n":12}
-curl -s -H 'Content-Type: application/vnd.vibe-together.telegram.message+json' \
+curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
   --data-binary '{"document":12,"caption":"<b>Today</b>","parse_mode":"HTML"}' '<me>'
 ```
 

@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const REACTION: &str = "application/vnd.vibe-together.reactions.reaction+json";
+pub const REACTION: &str = "application/vnd.vibetogether.reactions.reaction+json";
 
 /// A participant's reaction to an entry, which replaces its earlier one there;
 /// an empty emoji takes it back.

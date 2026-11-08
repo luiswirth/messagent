@@ -1,19 +1,19 @@
 # Reactions
 
 Reactions let a participant react to an entry with an emoji.
-It is an extension of Vibe Together, like speech (`https://vibe-together.agentics.lwirth.com/speech.md`), on the agentwire transport (`https://agentwire.agentics.lwirth.com/agentwire.md`).
+It is an extension of Vibe Together, like speech (`https://vibetogether.agentics.lwirth.com/speech.md`), on the agentwire transport (`https://agentwire.agentics.lwirth.com/agentwire.md`).
 messagent introduced it, so its spec lives here until a second client speaks it.
 
 ## Entries
 
-- `application/vnd.vibe-together.reactions.reaction+json`, as `{"entry":12,"emoji":"👍"}`:
+- `application/vnd.vibetogether.reactions.reaction+json`, as `{"entry":12,"emoji":"👍"}`:
   the sender's reaction to entry `entry`.
   It replaces the sender's earlier reaction to that entry, and an empty `emoji` takes it back.
 
 ## Example
 
 ```sh
-curl -s -H 'Content-Type: application/vnd.vibe-together.reactions.reaction+json' \
+curl -s -H 'Content-Type: application/vnd.vibetogether.reactions.reaction+json' \
   --data-binary '{"entry":12,"emoji":"👍"}' '<me>'
 ```
 

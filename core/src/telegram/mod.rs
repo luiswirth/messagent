@@ -20,7 +20,7 @@ use crate::{
 /// The type of a message in Telegram's own format: the body of the Bot API's `sendMessage`,
 /// passed to it as is, with the chat set by messagent; or of `sendPhoto` or `sendDocument`,
 /// where its `photo` or `document` is the number of the entry that holds the file.
-pub const NATIVE: &str = "application/vnd.vibe-together.telegram.message+json";
+pub const NATIVE: &str = "application/vnd.vibetogether.telegram.message+json";
 
 /// How long Telegram keeps an update that no one fetched.
 pub const KEPT: SignedDuration = SignedDuration::from_hours(24);
