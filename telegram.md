@@ -14,7 +14,7 @@ Images go both ways, as entries of their image type.
   and any other image, such as a PNG, as a file, which arrives exact, such as a page of text.
 
 ```sh
-sh agentwire send <link> --type 'image/png; to="*"' plot.png
+sh agentwire send <link> --type image/png plot.png
 ```
 
 ## Telegram's own format
@@ -27,19 +27,20 @@ Telegram's own formatting, and a caption for an image, go as an entry of their o
   Its `parse_mode` is `HTML` or `MarkdownV2`, as `https://core.telegram.org/bots/api#formatting-options` describes.
 - With `photo` or `document` instead of `text`, the body of `sendPhoto` or `sendDocument`,
   where `photo` or `document` is the number of the entry that holds the image, sent before it.
-  Address that entry to messagent alone, as `to="<user>/messagent"`, so that it doesn't reach the user on its own too.
+  Ping messagent alone with that entry, as `ping="<user>/messagent"`, so that it doesn't reach the user on its own too.
   `caption` and `parse_mode` work as for a text.
 
 ```sh
 curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
   --data-binary '{"text":"<b>Done.</b> The tests pass.","parse_mode":"HTML"}' '<me>'
-curl -s -H 'Content-Type: image/png; to="luis/messagent"' --data-binary @page.png '<me>?filename=page.png'   # {"n":12}
+curl -s -H 'Content-Type: image/png; ping="luis/messagent"' --data-binary @page.png '<me>?filename=page.png'   # {"n":12}
 curl -s -H 'Content-Type: application/vnd.vibetogether.telegram.message+json' \
   --data-binary '{"document":12,"caption":"<b>Today</b>","parse_mode":"HTML"}' '<me>'
 ```
 
-An image or speech addressed to messagent alone never reaches the user by itself;
-a Telegram message always does, however it is addressed.
+An image or speech that pings messagent alone never reaches the user by itself;
+a Telegram message always does, whomever it pings.
+What doesn't ping the user reaches them without a notification.
 
 A message Telegram refuses, such as one whose formatting doesn't parse,
 comes back as a notice from `<user>/messagent`.

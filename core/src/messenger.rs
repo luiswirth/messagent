@@ -59,11 +59,12 @@ pub trait Messages {
     /// Splits a text into messages the messenger carries.
     fn split(&self, text: &str) -> Vec<String>;
 
-    /// Sends one message of plain text to the user, and returns its id.
-    fn send(&self, message: &str) -> Result<String>;
+    /// Sends one message of plain text to the user, and returns its id;
+    /// `quiet`, without notifying them, for what doesn't ping them.
+    fn send(&self, message: &str, quiet: bool) -> Result<String>;
 
-    /// Sends an image to the user, and returns its message's id.
-    fn send_image(&self, image: &Image) -> Result<String>;
+    /// Sends an image to the user, and returns its message's id; `quiet` as for `send`.
+    fn send_image(&self, image: &Image, quiet: bool) -> Result<String>;
 
     /// The bytes of a file the user sent.
     fn download(&self, file: &File) -> Result<Vec<u8>>;
@@ -72,8 +73,14 @@ pub trait Messages {
     fn native(&self) -> &'static str;
 
     /// Sends a message in the messenger's own format, as is, and returns its id.
-    /// Where it names an entry of the room for a file, `entry` gives its payload.
-    fn send_native(&self, message: &[u8], entry: &dyn Fn(i64) -> Result<Image>) -> Result<String>;
+    /// Where it names an entry of the room for a file, `entry` gives its payload;
+    /// `quiet` as for `send`, unless the message says itself.
+    fn send_native(
+        &self,
+        message: &[u8],
+        entry: &dyn Fn(i64) -> Result<Image>,
+        quiet: bool,
+    ) -> Result<String>;
 
     /// Waits for what arrives next.
     /// It rides out passing failures itself, so an error is one that ends watching.

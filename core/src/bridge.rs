@@ -36,16 +36,11 @@ use crate::{
 pub const WAKE_FAILED: &str =
     "Your agent couldn't be woken: the wake command failed. Your messages wait for it.";
 
-/// The type of what the user and messagent say: speech in plain text, to everyone in the room,
-/// since everyone in the chat's room is in the conversation.
-const SPEECH: &str = "text/plain; charset=utf-8; to=\"*\"";
+/// The type of what the user and messagent say: speech in plain text, which pings everyone
+/// in the room, since everyone in the chat's room is in the conversation.
+const SPEECH: &str = "text/plain; charset=utf-8";
 
-/// A type as speech the user says, to everyone in the room.
-fn speech(kind: &str) -> String {
-    format!("{kind}; to=\"*\"")
-}
-
-/// A type without its parameters, such as `to`.
+/// A type without its parameters, such as `ping`.
 fn base(kind: &str) -> String {
     kind.split(';').next().unwrap_or("").trim().to_string()
 }
@@ -299,7 +294,7 @@ impl Bridge {
     fn image(&self, messenger: &dyn Messenger, id: &str, file: &messenger::File) -> Result<()> {
         let sent = messenger
             .download(file)
-            .and_then(|bytes| self.said(id, &speech(&file.kind), file.filename.as_deref(), &bytes));
+            .and_then(|bytes| self.said(id, &file.kind, file.filename.as_deref(), &bytes));
         if let Err(error) = sent {
             eprintln!("messagent watch: can't carry an image into the room: {error:#}");
             let note = format!("[an image messagent couldn't carry: {error:#}]");
@@ -417,20 +412,22 @@ impl Bridge {
                 bytes: payload.bytes,
             })
         };
+        // What doesn't ping the user reaches them as an fyi, without a notification.
+        let quiet = !entry.pings(&self.config.name);
         if entry.is(messenger.native()) {
             let body = match &entry.text {
                 Some(text) => text.clone().into_bytes(),
                 None => self.relay.fetch(&session.me, entry.n)?.bytes,
             };
-            messenger.send_native(&body, &image)?;
+            messenger.send_native(&body, &image, quiet)?;
             return Ok(());
         }
         if is_image(entry) {
-            messenger.send_image(&image(entry.n)?)?;
+            messenger.send_image(&image(entry.n)?, quiet)?;
             return Ok(());
         }
         for part in messenger.split(&plain(entry, &self.config.agent)) {
-            messenger.send(&part)?;
+            messenger.send(&part, quiet)?;
         }
         Ok(())
     }
@@ -450,18 +447,18 @@ impl Bridge {
                 continue;
             }
             let seen = sort(entry, user);
-            let for_agents = entry.to().is_none_or(|to| to.contains(agent));
+            let for_agents = entry.pings(agent);
             if seen != Seen::Nothing && entry.from != *agent && for_agents {
                 latest = entry.n;
                 fresh = true;
             }
-            // One addressed to messagent alone is for its use, such as an image a Telegram
+            // One that pings messagent alone is for its use, such as an image a Telegram
             // message sends, and not for the user by itself; a message in the messenger's own
-            // format is for messagent to carry out, however it is addressed.
+            // format is for messagent to carry out, whomever it pings.
             let for_messagent = !entry.is(messenger.native())
-                && entry
-                    .to()
-                    .is_some_and(|to| to.iter().all(|name| *name == notices_name(user)));
+                && entry.ping().is_some_and(|names| {
+                    !names.is_empty() && names.iter().all(|name| *name == notices_name(user))
+                });
             if seen == Seen::Out && !for_messagent {
                 let current = self.current().unwrap_or_else(|| session.clone());
                 self.deliver(messenger, entry, &current)?;
@@ -586,7 +583,7 @@ pub fn watch(paths: &Paths) -> Result<()> {
 
 /// Tells the user, since no agent is there to, and the agent, for once it is woken.
 fn wake_failed(bridge: &Bridge) -> Result<()> {
-    messenger::open(&bridge.config.messenger, &bridge.paths)?.send(WAKE_FAILED)?;
+    messenger::open(&bridge.config.messenger, &bridge.paths)?.send(WAKE_FAILED, false)?;
     bridge.notice(WAKE_FAILED)?;
     Ok(())
 }

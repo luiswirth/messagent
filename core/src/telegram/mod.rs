@@ -101,8 +101,10 @@ impl Messages for Telegram {
         split(text, MESSAGE_LIMIT)
     }
 
-    fn send(&self, message: &str) -> Result<String> {
-        let sent = self.bot.send_message(self.user()?, message)?;
+    fn send(&self, message: &str, quiet: bool) -> Result<String> {
+        let mut body = Map::from_iter([("text".into(), message.into())]);
+        silence(&mut body, quiet);
+        let sent = self.bot.send_raw(self.user()?, body)?;
         Ok(sent.message_id.to_string())
     }
 
@@ -110,22 +112,24 @@ impl Messages for Telegram {
         NATIVE
     }
 
-    fn send_image(&self, image: &Image) -> Result<String> {
+    fn send_image(&self, image: &Image, quiet: bool) -> Result<String> {
         let user = self.user()?;
         let upload = upload(image);
+        let mut body = Map::new();
+        silence(&mut body, quiet);
         // A photo is recompressed to a JPEG of limited size, which suits a JPEG, such as a
         // photograph; any other image goes as a document, so that it arrives exact,
         // such as a page of text. One Telegram refuses as a photo goes as a document too.
         if is_jpeg(&image.kind)
             && let Ok(sent) = self
                 .bot
-                .send_file(user, "sendPhoto", "photo", &upload, Map::new())
+                .send_file(user, "sendPhoto", "photo", &upload, body.clone())
         {
             return Ok(sent.message_id.to_string());
         }
         let sent = self
             .bot
-            .send_file(user, "sendDocument", "document", &upload, Map::new())?;
+            .send_file(user, "sendDocument", "document", &upload, body)?;
         Ok(sent.message_id.to_string())
     }
 
@@ -133,10 +137,18 @@ impl Messages for Telegram {
         self.bot.download(&file.id)
     }
 
-    fn send_native(&self, message: &[u8], entry: &dyn Fn(i64) -> Result<Image>) -> Result<String> {
-        let body: Map<String, Value> = serde_json::from_slice(message).context(
+    fn send_native(
+        &self,
+        message: &[u8],
+        entry: &dyn Fn(i64) -> Result<Image>,
+        quiet: bool,
+    ) -> Result<String> {
+        let mut body: Map<String, Value> = serde_json::from_slice(message).context(
             "a Telegram message is a JSON object, the body of sendMessage, sendPhoto or sendDocument",
         )?;
+        if !body.contains_key("disable_notification") {
+            silence(&mut body, quiet);
+        }
         let user = self.user()?;
         for (method, field) in [("sendPhoto", "photo"), ("sendDocument", "document")] {
             let Some(value) = body.get(field) else {
@@ -362,5 +374,12 @@ fn text_of(message: &Message) -> String {
     match &message.caption {
         Some(caption) => format!("{caption}\n{note}"),
         None => note,
+    }
+}
+
+/// Sends a message without a notification, where it is `quiet`.
+fn silence(body: &mut Map<String, Value>, quiet: bool) {
+    if quiet {
+        body.insert("disable_notification".into(), true.into());
     }
 }

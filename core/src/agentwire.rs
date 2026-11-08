@@ -74,19 +74,27 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// Whom it is for, by speech's `to` parameter of its type: `None` for everyone,
-    /// which is also what an entry without `to` is for.
-    pub fn to(&self) -> Option<Vec<String>> {
-        let to = self.kind.split(';').skip(1).find_map(|parameter| {
+    /// Whom it pings, by speech's `ping` parameter of its type: `None` for everyone,
+    /// which is also whom an entry without `ping` pings, and no name for no one.
+    pub fn ping(&self) -> Option<Vec<String>> {
+        let ping = self.kind.split(';').skip(1).find_map(|parameter| {
             let (key, value) = parameter.split_once('=')?;
-            key.trim().eq_ignore_ascii_case("to").then(|| value.trim())
+            key.trim()
+                .eq_ignore_ascii_case("ping")
+                .then(|| value.trim())
         })?;
-        let names: Vec<String> = to
+        let names: Vec<String> = ping
             .trim_matches('"')
             .split_whitespace()
             .map(str::to_string)
             .collect();
         (!names.iter().any(|name| name == "*")).then_some(names)
+    }
+
+    /// Whether it pings `name`.
+    pub fn pings(&self, name: &str) -> bool {
+        self.ping()
+            .is_none_or(|names| names.iter().any(|pinged| pinged == name))
     }
 
     /// Whether its type is `kind`, whatever the parameters.
