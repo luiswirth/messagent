@@ -3,6 +3,8 @@ use std::{env, ffi::OsString, path::PathBuf};
 use anyhow::{Context, Result, bail};
 
 /// Where messagent keeps its files on the user's machine.
+/// A `v1-log.jsonl` in the state directory is the chat as messagent logged it itself,
+/// before it became a bridge: kept as a record, and read by nothing.
 #[derive(Clone)]
 pub struct Paths {
     pub config: PathBuf,
