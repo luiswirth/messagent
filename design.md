@@ -41,6 +41,7 @@ A piece of Ag² (`~/dev/agentics`), in a public repository of its own, Luis's de
   We host as little as possible, for cost and maintenance.
 - Discord was tried for calls and dropped, Luis's decision: it is not the phone experience, and every user would make an app by hand.
   The try is in the history of messagent#1.
+- Discord comes back as a messenger of messagent, for channels where people and agents talk, Luis's decision (2026-11-09): messagent connects every kind of messenger.
 - Calls use voice's core, Luis's decision: conversational voice mode, with dictation and read-aloud as its special cases, is a standalone component without transport or UI.
   A call's voice is the voice engine, a participant of its own in the session, Luis's decision.
   Telegram bots can't call.
