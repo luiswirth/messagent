@@ -24,10 +24,12 @@ Vibe Together's own design, which this builds on, is in the collective's `projec
 ## The bridge
 
 - One bot for everyone, `@vt_messagent_bot`: Telegram gives a bot's updates to one receiver only.
-  It runs on lwirth-server for now, for the Telegram users and accounts its config allows, Luis alone: anyone else is ignored, so no stranger asks for an OTP to phish a link with.
+  It is anyone's to run for anyone; an allowlist is a deployment's own, Luis's decision (2026-11-16).
+  It runs on lwirth-server, for the Telegram users and accounts its config allows, Luis alone: anyone else is ignored, so no stranger asks for an OTP to phish a link with.
 - The bridge speaks only as the people it carries, and adds no participant of its own.
   - A person links once, by OTP: the bot shows a link and a code, and the person approves on the page that shows the same code.
-    With Vibe Together's rewrite (2026-11-11) the bridge grants went, so the OTP is one of a person token, which messagent keeps; open whether Luis agrees.
+    The OTP is one of an app token naming messagent, Luis's decision (2026-11-16): it sends and reads in the person's sessions and nothing else, shows among their logins, and its messages say which app they came through.
+    Until Vibe Together has the app kind, it is a person token.
     It lasts until revoked, with `/unlink` or in the account's logins.
   - Vibe Together knows nothing of the messenger: messagent alone keeps which Telegram user is which account.
   - A linked person speaks under their account name.
@@ -35,7 +37,7 @@ Vibe Together's own design, which this builds on, is in the collective's `projec
 - The bot manages it: `/start` links in the private chat, and once linked, offers the person's sessions as buttons, where the one pressed gets the chat.
   `/stop` ends a chat's bridge.
 - It passes everything both ways, so the bot's group privacy mode is off.
-- It marks nothing read for the people it carries, since it can't tell what they read in the messenger: it reads the session's log, which has no side effects.
+- It marks nothing read for the people it carries, since it can't tell what they read in the messenger: it reads the session's log, which has no side effects, Luis's agreement (2026-11-16).
 - A message the agents have read gets 👀 in the messenger.
 - Images are first-class, both ways.
 - The agent writes in each messenger's own format, passed through raw.
