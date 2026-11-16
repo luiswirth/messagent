@@ -14,10 +14,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1.54", features = ["macros", "rt-multi-thread", "time", "sync", "fs", "signal"] }
 # Vibe Together's client library, the only way to call its API, pinned to a commit of its main.
-vibetogether-client = { git = "https://github.com/PotentialHedge/vibetogether", rev = "15a52fefb9c50f09a94f396fc851bb13daed3189" }
+vibetogether-client = { git = "https://github.com/PotentialHedge/vibetogether", rev = "63d5459c72736215cb87bf2c341233f4851fc29b" }
 
 [dev-dependencies]
 axum = "0.8"
 # A backend on loopback for the tests, the same commit as the client.
-vibetogether-backend = { git = "https://github.com/PotentialHedge/vibetogether", rev = "15a52fefb9c50f09a94f396fc851bb13daed3189" }
+vibetogether-backend = { git = "https://github.com/PotentialHedge/vibetogether", rev = "63d5459c72736215cb87bf2c341233f4851fc29b" }
 tokio = { version = "1.54", features = ["full"] }

@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 use vibetogether_client::{
   Client, Error as VtError,
-  protocol::{Entry, LogQuery, OtpRequest, OverviewQuery, TokenKind, is_message, names_of},
+  protocol::{Entry, LogQuery, OtpRequest, TokenKind, is_message, names_of},
 };
 
 use crate::{
@@ -86,6 +86,9 @@ pub struct Settings {
 struct Linked {
   account: String,
   token: String,
+  /// The login the token is, which it revokes itself; none for a person token of before apps.
+  #[serde(default)]
+  login: Option<String>,
 }
 
 /// A bridged chat's place in its session, as kept on disk.
@@ -422,11 +425,11 @@ impl Service {
   /// Links `from`'s account: they approve the OTP, signed in, and the bot keeps the token.
   async fn link(self: &Arc<Self>, chat: i64, from: &User) -> Result<()> {
     let anonymous = Client::new(&self.server, None);
-    // The page shows it as it asks the person to approve: a name, so lower case.
-    let name = format!("messagent-telegram-{}", from.id);
+    // An app token, by the app's name, which the approval page and every entry it sends show.
+    let name = "messagent".to_string();
     let otp = anonymous
       .request_otp(&OtpRequest {
-        kind: TokenKind::Person,
+        kind: TokenKind::App,
         name,
       })
       .await?;
@@ -446,11 +449,11 @@ impl Service {
     )
     .await
     .map_err(|_| anyhow!("the link expired"))??;
-    if token.kind != TokenKind::Person {
-      return Err(anyhow!("Vibe Together gave no person token"));
+    if token.kind != TokenKind::App {
+      return Err(anyhow!("Vibe Together gave no app token"));
     }
     if !self.allow.is_empty() && !self.allow.contains(&token.account) {
-      revoke_own(&self.client(&token.token)).await;
+      revoke(&self.client(&token.token), Some(&token.login)).await;
       return Err(anyhow!("this bot doesn't serve that account"));
     }
     {
@@ -460,12 +463,13 @@ impl Service {
         Linked {
           account: token.account.clone(),
           token: token.token,
+          login: Some(token.login),
         },
       );
       self.save_linked(&linked)?;
       if let Some(old) = old {
         let client = self.client(&old.token);
-        tokio::spawn(async move { revoke_own(&client).await });
+        tokio::spawn(async move { revoke(&client, old.login.as_deref()).await });
       }
     }
     self
@@ -503,12 +507,13 @@ impl Service {
         )
         .await;
     }
-    let overview = match self
-      .client(&linked.token)
-      .overview(&OverviewQuery::default())
-      .await
-    {
-      Ok(overview) => overview,
+    let client = self.client(&linked.token);
+    let listed = match client.sessions().await {
+      Ok(sessions) => client.dms().await.map(|dms| (sessions, dms)),
+      Err(e) => Err(e),
+    };
+    let (sessions, dms) = match listed {
+      Ok(listed) => listed,
       Err(e) if e.status() == Some(401) => {
         self.forget(from.id).await;
         return self
@@ -525,28 +530,21 @@ impl Service {
       }
     };
     let mut choices = Vec::new();
-    for group in &overview.groups {
-      for session in &group.sessions {
-        choices.push((
-          format!("{} › {}", group.group.name, session.name),
-          session.id.clone(),
-        ));
-      }
-      for project in &group.projects {
-        for session in &project.sessions {
-          choices.push((
-            format!(
-              "{} › {} › {}",
-              group.group.name, project.project.name, session.name
-            ),
-            session.id.clone(),
-          ));
+    for session in sessions.iter().chain(&dms) {
+      let label = match (&session.group, &session.project, &session.friend) {
+        (_, _, Some(friend)) => format!("DM with {friend}"),
+        (Some(group), Some(project), _) => {
+          format!("{} › {} › {}", group.name, project.name, session.name)
         }
+        (Some(group), None, _) => format!("{} › {}", group.name, session.name),
+        _ => session.name.clone(),
+      };
+      if !choices
+        .iter()
+        .any(|(_, id): &(String, String)| *id == session.id)
+      {
+        choices.push((label, session.id.clone()));
       }
-    }
-    for dm in &overview.dms {
-      let friend = dm.friend.as_deref().unwrap_or(&dm.name);
-      choices.push((format!("DM with {friend}"), dm.id.clone()));
     }
     let buttons: Vec<(String, String)> = choices
       .into_iter()
@@ -701,17 +699,14 @@ impl Service {
     let Some(linked) = self.linked(from.id) else {
       return self.tell(chat, "You are not linked.").await;
     };
-    let revoked = revoke_own(&self.client(&linked.token)).await;
+    let revoked = revoke(&self.client(&linked.token), linked.login.as_deref()).await;
     self.forget(from.id).await;
     let text = if revoked {
-      "Unlinked: I no longer speak as you.".to_string()
+      "Unlinked: I no longer speak as you."
     } else {
-      format!(
-        "Unlinked here, but Vibe Together didn't revoke the token: revoke messagent-telegram-{} in your logins.",
-        from.id
-      )
+      "Unlinked here, but Vibe Together didn't revoke the token: revoke messagent in your logins."
     };
-    self.tell(chat, &text).await;
+    self.tell(chat, text).await;
   }
 
   /// A group became a supergroup: its bridge moves to the new id.
@@ -851,14 +846,10 @@ impl Service {
     let mut delay = Duration::from_secs(1);
     loop {
       let place = bridge.place();
+      // Whoever bridged it is linking again: the chat waits. Unlinking ends it apart.
       let Some(linked) = self.linked(place.by) else {
-        self
-          .tell(
-            chat,
-            "This chat's bridge ended: whoever bridged it is no longer linked.",
-          )
-          .await;
-        return self.end(chat);
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        continue;
       };
       let client = self.client(&linked.token);
       let query = LogQuery {
@@ -1199,21 +1190,26 @@ fn file_of(message: &Message) -> Option<(String, Option<u64>, String, Option<Str
   None
 }
 
-/// Revokes the token a client holds, its own login: whether it is gone.
-async fn revoke_own(client: &Client) -> bool {
-  let current = match client.logins().await {
-    Ok(logins) => logins.into_iter().find(|l| l.current),
-    Err(e) if e.status() == Some(401) => return true,
-    Err(e) => {
-      eprintln!("messagent: can't list the logins to revoke one: {e}");
-      return false;
-    }
+/// Revokes the token a client holds, its own login, by its id; a person token of before apps,
+/// which has none, finds it among the logins. Whether it is gone.
+async fn revoke(client: &Client, login: Option<&str>) -> bool {
+  let login = match login {
+    Some(login) => login.to_string(),
+    None => match client.logins().await {
+      Ok(logins) => match logins.into_iter().find(|l| l.current) {
+        Some(login) => login.id,
+        None => return false,
+      },
+      Err(e) if e.status() == Some(401) => return true,
+      Err(e) => {
+        eprintln!("messagent: can't list the logins to revoke one: {e}");
+        return false;
+      }
+    },
   };
-  let Some(login) = current else {
-    return false;
-  };
-  match client.revoke_login(&login.id).await {
+  match client.revoke_login(&login).await {
     Ok(()) => true,
+    Err(e) if e.status() == Some(401) => true,
     Err(e) => {
       eprintln!("messagent: can't revoke a login: {e}");
       false
@@ -1250,6 +1246,30 @@ pub async fn serve(settings: Settings) -> Result<()> {
     };
     let place: Place = load(&path)?;
     service.start(chat, place);
+  }
+  // Person tokens of before apps go: each person links again, by an app token, Luis's decision
+  // (2026-11-16); their chats stay bridged meanwhile.
+  let before: Vec<(i64, Linked)> = service
+    .linked
+    .lock()
+    .expect("no holder panics")
+    .iter()
+    .filter(|(_, l)| l.login.is_none())
+    .map(|(user, l)| (*user, l.clone()))
+    .collect();
+  for (user, linked) in before {
+    revoke(&service.client(&linked.token), None).await;
+    {
+      let mut all = service.linked.lock().expect("no holder panics");
+      all.remove(&user);
+      service.save_linked(&all)?;
+    }
+    service
+      .tell(
+        user,
+        "messagent now links by an app token: send /start to link again. Your chats stay bridged.",
+      )
+      .await;
   }
   if let Err(e) = service
     .bot

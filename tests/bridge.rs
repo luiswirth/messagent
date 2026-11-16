@@ -314,6 +314,7 @@ async fn bridges_a_private_chat() {
   }
   let entry = entry.expect("Luis's message reached the session");
   assert_eq!(entry.from, "luis");
+  assert_eq!(entry.app.as_deref(), Some("messagent"));
   let received = agent
     .receive(&ReceiveQuery {
       wait: Some(0),

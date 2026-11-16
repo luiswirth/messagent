@@ -29,7 +29,6 @@ Vibe Together's own design, which this builds on, is in the collective's `projec
 - The bridge speaks only as the people it carries, and adds no participant of its own.
   - A person links once, by OTP: the bot shows a link and a code, and the person approves on the page that shows the same code.
     The OTP is one of an app token naming messagent, Luis's decision (2026-11-16): it sends and reads in the person's sessions and nothing else, shows among their logins, and its messages say which app they came through.
-    Until Vibe Together has the app kind, it is a person token.
     It lasts until revoked, with `/unlink` or in the account's logins.
   - Vibe Together knows nothing of the messenger: messagent alone keeps which Telegram user is which account.
   - A linked person speaks under their account name.
