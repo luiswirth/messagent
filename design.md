@@ -32,7 +32,7 @@ Vibe Together's own design, which this builds on, is in the collective's `projec
     It lasts until revoked, with `/unlink` or in the account's logins.
   - Vibe Together knows nothing of the messenger: messagent alone keeps which Telegram user is which account.
   - A linked person speaks under their account name.
-    Anyone else in a group has no voice in the session, since only a person token speaks: `telegram/<name>`, unverified, went with the bridge grants.
+    Anyone else in a group has no voice in the session, since only a linked person speaks: `telegram/<name>`, unverified, went with the bridge grants.
 - The bot manages it: `/start` links in the private chat, and once linked, offers the person's sessions as buttons, where the one pressed gets the chat.
   `/stop` ends a chat's bridge.
 - It passes everything both ways, so the bot's group privacy mode is off.

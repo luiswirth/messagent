@@ -1,7 +1,7 @@
 //! The Telegram bridge: one bot, which mirrors each Telegram chat bridged, private or a group, and
 //! one Vibe Together session onto each other.
 //!
-//! A person links their Telegram account once, by a Vibe Together OTP of a person token, which they
+//! A person links their Telegram account once, by a Vibe Together OTP of an app token, which they
 //! approve on the website; the bot keeps the token and speaks as them with it, so Vibe Together
 //! knows nothing of Telegram. Once linked, `/start` offers their sessions as buttons, and the one
 //! pressed gets the chat. The chat's session is read by whoever bridged it, through the session's
@@ -81,7 +81,7 @@ pub struct Settings {
   pub telegram: Vec<i64>,
 }
 
-/// A Telegram user who linked their account: its name, and the person token of it.
+/// A Telegram user who linked their account: its name, and its app token.
 #[derive(Serialize, Deserialize, Clone)]
 struct Linked {
   account: String,
