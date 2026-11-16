@@ -63,6 +63,8 @@ const MAX_CHOICES: usize = 40;
 const KEPT: usize = 2000;
 /// How long a read of the session waits for something new.
 const WAIT: u64 = 300;
+/// The most messages one entry becomes in the chat; the rest stays in the session.
+const MAX_PIECES: usize = 5;
 /// The longest a piece of markdown is before it becomes HTML, leaving room for the tags.
 const PIECE: usize = 3000;
 
@@ -74,6 +76,9 @@ pub struct Settings {
   pub state: PathBuf,
   /// The accounts that may link, by name; anyone where it is empty.
   pub allow: Vec<String>,
+  /// The Telegram users the bot serves, by id; anyone where it is empty. Everyone else's
+  /// messages and presses are ignored, so no stranger links or asks for OTPs.
+  pub telegram: Vec<i64>,
 }
 
 /// A Telegram user who linked their account: its name, and the person token of it.
@@ -122,6 +127,7 @@ struct Service {
   server: String,
   state: PathBuf,
   allow: Vec<String>,
+  telegram: Vec<i64>,
   linked: Mutex<BTreeMap<i64, Linked>>,
   bridges: Mutex<HashMap<i64, Arc<Bridge>>>,
   linking: Mutex<HashSet<i64>>,
@@ -184,6 +190,10 @@ fn for_bridge(entry: &Entry) -> bool {
 }
 
 impl Service {
+  fn serves(&self, user: i64) -> bool {
+    self.telegram.is_empty() || self.telegram.contains(&user)
+  }
+
   fn client(&self, token: &str) -> Client {
     Client::new(&self.server, Some(token.to_string()))
   }
@@ -331,7 +341,7 @@ impl Service {
     let Some(from) = message.from.as_ref().filter(|f| !f.is_bot) else {
       return;
     };
-    if message.sender_chat.is_some() {
+    if message.sender_chat.is_some() || !self.serves(from.id) {
       return;
     }
     if let Some(command) = message
@@ -441,7 +451,7 @@ impl Service {
     }
     if !self.allow.is_empty() && !self.allow.contains(&token.account) {
       revoke_own(&self.client(&token.token)).await;
-      return Err(anyhow!("this bot serves only {}", self.allow.join(", ")));
+      return Err(anyhow!("this bot doesn't serve that account"));
     }
     {
       let mut linked = self.linked.lock().expect("no holder panics");
@@ -578,6 +588,9 @@ impl Service {
     let (Some(data), Some(message)) = (query.data.as_deref(), query.message.as_ref()) else {
       return answer("").await;
     };
+    if !self.serves(query.from.id) {
+      return answer("").await;
+    }
     let mut parts = data.split(' ');
     let (Some("b"), Some(user), Some(session)) = (parts.next(), parts.next(), parts.next()) else {
       return answer("").await;
@@ -688,9 +701,17 @@ impl Service {
     let Some(linked) = self.linked(from.id) else {
       return self.tell(chat, "You are not linked.").await;
     };
-    revoke_own(&self.client(&linked.token)).await;
+    let revoked = revoke_own(&self.client(&linked.token)).await;
     self.forget(from.id).await;
-    self.tell(chat, "Unlinked: I no longer speak as you.").await;
+    let text = if revoked {
+      "Unlinked: I no longer speak as you.".to_string()
+    } else {
+      format!(
+        "Unlinked here, but Vibe Together didn't revoke the token: revoke messagent-telegram-{} in your logins.",
+        from.id
+      )
+    };
+    self.tell(chat, &text).await;
   }
 
   /// A group became a supergroup: its bridge moves to the new id.
@@ -994,7 +1015,14 @@ impl Service {
     let ping = names_of(&entry.ty, "ping");
     let loud = ping.iter().any(|n| n == "*") || (place.private && ping.contains(&linked.account));
     let quiet = !loud;
+    // A message in Telegram's own format carries no sender's name, so only the chat's person and
+    // their own agents send one: nobody else poses as them.
+    let own = format!("{}/", linked.account);
+    let theirs = entry.from == linked.account || entry.from.starts_with(&own);
     if ty == TELEGRAM {
+      if !theirs {
+        return Ok(());
+      }
       return self
         .native(chat, client, &place.session, &body().await?, quiet)
         .await;
@@ -1003,7 +1031,6 @@ impl Service {
       return Ok(());
     }
     // In a private chat its person's own agents speak without a name, as a friend does.
-    let own = format!("{}/", linked.account);
     let name = (!(place.private && entry.from.starts_with(&own))).then(|| entry.from.clone());
     let is_text = matches!(ty.as_str(), "text/plain" | "text/markdown") && entry.filename.is_none();
     if !is_text {
@@ -1036,7 +1063,13 @@ impl Service {
     let header = name
       .map(|n| format!("<b>{}</b>\n", markdown::escape(&n)))
       .unwrap_or_default();
-    for piece in telegram::split(&text, PIECE) {
+    let mut pieces = telegram::split(&text, PIECE);
+    if pieces.len() > MAX_PIECES {
+      let rest: usize = pieces[MAX_PIECES..].iter().map(|p| p.chars().count()).sum();
+      pieces.truncate(MAX_PIECES);
+      pieces.push(format!("[{rest} more characters, in the session]"));
+    }
+    for piece in pieces {
       let html = if ty == "text/markdown" {
         markdown::to_html(&piece)
       } else {
@@ -1166,16 +1199,25 @@ fn file_of(message: &Message) -> Option<(String, Option<u64>, String, Option<Str
   None
 }
 
-/// Revokes the token a client holds, its own login.
-async fn revoke_own(client: &Client) {
+/// Revokes the token a client holds, its own login: whether it is gone.
+async fn revoke_own(client: &Client) -> bool {
   let current = match client.logins().await {
     Ok(logins) => logins.into_iter().find(|l| l.current),
-    Err(e) => return eprintln!("messagent: can't list the logins to revoke one: {e}"),
+    Err(e) if e.status() == Some(401) => return true,
+    Err(e) => {
+      eprintln!("messagent: can't list the logins to revoke one: {e}");
+      return false;
+    }
   };
-  if let Some(login) = current
-    && let Err(e) = client.revoke_login(&login.id).await
-  {
-    eprintln!("messagent: can't revoke a login: {e}");
+  let Some(login) = current else {
+    return false;
+  };
+  match client.revoke_login(&login.id).await {
+    Ok(()) => true,
+    Err(e) => {
+      eprintln!("messagent: can't revoke a login: {e}");
+      false
+    }
   }
 }
 
@@ -1193,6 +1235,7 @@ pub async fn serve(settings: Settings) -> Result<()> {
     bridges: Mutex::new(HashMap::new()),
     linking: Mutex::new(HashSet::new()),
     allow: settings.allow,
+    telegram: settings.telegram,
     state: settings.state,
   });
   for entry in fs::read_dir(service.state.join("chats"))? {

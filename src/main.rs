@@ -26,6 +26,10 @@ struct Cli {
   /// An account that may link, by name; repeated for several. Anyone, where none is given.
   #[arg(long, value_name = "ACCOUNT")]
   allow: Vec<String>,
+  /// A Telegram user the bot serves, by id; repeated for several. Anyone, where none is given:
+  /// everyone else is ignored, so no stranger asks for an OTP.
+  #[arg(long, value_name = "ID")]
+  telegram: Vec<i64>,
   /// The Bot API, if not Telegram's own, such as a fake one for tests.
   #[arg(long, default_value = telegram::API)]
   telegram_api: String,
@@ -41,6 +45,7 @@ async fn main() -> Result<()> {
     server: cli.server,
     state: cli.state,
     allow: cli.allow,
+    telegram: cli.telegram,
   })
   .await
 }

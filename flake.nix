@@ -53,6 +53,11 @@
           lockFile = ./Cargo.lock;
           allowBuiltinFetchGit = true;
         };
+        # rustls's crypto, which nixpkgs links against its own AWS-LC.
+        nativeBuildInputs = [pkgs.pkg-config];
+        buildInputs = [pkgs.aws-lc];
+        # The tests run a Vibe Together backend, whose build wants more than the sandbox gives: `just ci` runs them.
+        doCheck = false;
         meta.mainProgram = "messagent";
       };
     });

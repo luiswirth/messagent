@@ -226,6 +226,10 @@ async fn bridges_a_private_chat() {
         &telegram,
         "--allow",
         "luis",
+        "--telegram",
+        "7",
+        "--telegram",
+        "9",
       ])
       .spawn()
       .unwrap(),
@@ -237,11 +241,23 @@ async fn bridges_a_private_chat() {
     after.split('.').next().unwrap().to_string()
   };
 
+  // A Telegram user the bot doesn't serve is ignored.
+  Fake::push(&fake, message(1, 8, 8, "/start"));
+  tokio::time::sleep(Duration::from_millis(500)).await;
+  assert!(
+    fake
+      .lock()
+      .unwrap()
+      .calls
+      .iter()
+      .all(|c| !c.body.contains("\"chat_id\":8"))
+  );
+
   // Someone not allowed links: their token is revoked at once.
   Fake::push(&fake, message(1, 9, 9, "/start"));
   let asked = called(&fake, "sendMessage", "shows the code").await;
   bob_browser.approve_otp(&code(&asked)).await.unwrap();
-  called(&fake, "sendMessage", "serves only luis").await;
+  called(&fake, "sendMessage", "doesn't serve that account").await;
   for _ in 0..50 {
     if bob
       .logins()
