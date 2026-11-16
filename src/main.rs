@@ -11,8 +11,8 @@ use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 
 /// Links one agent's inbox and outbox to a Telegram bot of its own: what its people write to the
-/// bot is delivered into the inbox as from `telegram/<name>`, and what the agent writes into its
-/// outbox for `telegram/<name>` reaches that person's chat.
+/// bot is delivered into the inbox as from `telegram:<name>`, and what the agent writes into its
+/// outbox for `telegram:<name>` reaches that person's chat.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {

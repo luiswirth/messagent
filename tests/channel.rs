@@ -196,10 +196,10 @@ async fn carries_both_ways() {
   let items = files(&new);
   assert_eq!(items.len(), 1, "{items:?}");
   let name = items[0].file_name().unwrap().to_string_lossy().into_owned();
-  assert!(name.ends_with(".telegram_luis.txt"), "{name}");
+  assert!(name.ends_with(".telegram%3Aluis.txt"), "{name}");
   let text = fs::read_to_string(&items[0]).unwrap();
   assert!(
-    text.contains("from telegram/luis (@luiswirth), replying to: \"Tests pass.\""),
+    text.contains("from telegram:luis (@luiswirth), replying to: \"Tests pass.\""),
     "{text}"
   );
   assert!(text.contains("how is it going?"), "{text}");
@@ -228,18 +228,22 @@ async fn carries_both_ways() {
   );
   until("two more items", || files(&new).len() == 2).await;
   let items = files(&new);
-  assert!(items[0].to_string_lossy().ends_with(".telegram_luis.jpg"));
+  assert!(items[0].to_string_lossy().ends_with(".telegram%3Aluis.jpg"));
   let text = fs::read_to_string(&items[1]).unwrap();
   assert!(text.contains("[a photo: the inbox item"), "{text}");
 
   // The agent answers through its outbox: markdown as Telegram's HTML, an image as a file.
   write_outbox(
     &outbox,
-    "20261116T170000.000001Z.telegram_luis.md",
+    "20261116T170000.000001Z.telegram%3Aluis.md",
     b"**Fine**, thanks.",
   );
   called(&fake, "sendMessage", "<b>Fine</b>, thanks.").await;
-  write_outbox(&outbox, "20261116T170000.000002Z.telegram_luis.png", b"png");
+  write_outbox(
+    &outbox,
+    "20261116T170000.000002Z.telegram%3Aluis.png",
+    b"png",
+  );
   called(&fake, "sendDocument", "file.png").await;
   until("the outbox items taken", || {
     files(&outbox.join("new")).is_empty()
@@ -249,13 +253,13 @@ async fn carries_both_ways() {
   // An item for someone else stays where it is.
   write_outbox(
     &outbox,
-    "20261116T170000.000003Z.discord_luis.md",
+    "20261116T170000.000003Z.discord%3Aluis.md",
     b"elsewhere",
   );
   // One for someone the bot doesn't know comes back as a notice.
   write_outbox(
     &outbox,
-    "20261116T170000.000004Z.telegram_bob.md",
+    "20261116T170000.000004Z.telegram%3Abob.md",
     b"hi bob",
   );
   until("a notice", || {
@@ -266,7 +270,7 @@ async fn carries_both_ways() {
   .await;
   assert!(
     outbox
-      .join("new/20261116T170000.000003Z.discord_luis.md")
+      .join("new/20261116T170000.000003Z.discord%3Aluis.md")
       .exists()
   );
   let _ = fs::remove_dir_all(&dir);

@@ -142,6 +142,8 @@ impl Maildir {
     self.create()?;
     let mut names: Vec<Name> = fs::read_dir(self.new_dir())?
       .filter_map(|entry| entry.ok())
+      // Only a regular file is an item: no link is followed to what it points at.
+      .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
       .filter_map(|entry| parse(&entry.file_name().to_string_lossy()))
       .filter(|name| who(&name.who))
       .collect();
@@ -234,10 +236,10 @@ mod tests {
 
   #[test]
   fn names_round_trip() {
-    assert_eq!(encode("telegram/luis.w"), "telegram_luis%2Ew");
-    assert_eq!(decode("telegram_luis%2Ew"), "telegram/luis.w");
-    let name = parse("20261115T153012.123456Z.telegram_luis.md").unwrap();
-    assert_eq!(name.who, "telegram/luis");
+    assert_eq!(encode("telegram:luis.w"), "telegram%3Aluis%2Ew");
+    assert_eq!(decode("telegram%3Aluis%2Ew"), "telegram:luis.w");
+    let name = parse("20261115T153012.123456Z.telegram%3Aluis.md").unwrap();
+    assert_eq!(name.who, "telegram:luis");
     assert_eq!(name.ext, "md");
     assert!(parse(".hidden").is_none());
   }
@@ -247,15 +249,15 @@ mod tests {
     let dir = std::env::temp_dir().join(format!("messagent-maildir-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     let outbox = Maildir::new(&dir);
-    let file = outbox.deliver(b"hi", "telegram/luis", "md").unwrap();
-    let untaken = outbox.untaken(|w| w.starts_with("telegram/")).unwrap();
+    let file = outbox.deliver(b"hi", "telegram:luis", "md").unwrap();
+    let untaken = outbox.untaken(|w| w.starts_with("telegram:")).unwrap();
     assert_eq!(untaken.len(), 1);
     assert_eq!(untaken[0].file, file);
     assert!(outbox.take(&untaken[0]).unwrap().is_some());
     assert!(outbox.take(&untaken[0]).unwrap().is_none());
     assert!(!outbox.is_new(&file));
-    fs::write(dir.join("do-not-disturb"), "from=telegram/luis quiet\n").unwrap();
-    assert!(!outbox.rings(&[("from", "telegram/luis")], true).unwrap());
+    fs::write(dir.join("do-not-disturb"), "from=telegram:luis quiet\n").unwrap();
+    assert!(!outbox.rings(&[("from", "telegram:luis")], true).unwrap());
     assert!(outbox.rings(&[("from", "other")], true).unwrap());
     let _ = fs::remove_dir_all(&dir);
   }

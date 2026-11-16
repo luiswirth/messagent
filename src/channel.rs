@@ -1,6 +1,6 @@
 //! messagent's Telegram channel: one bot for one agent, linked to its inbox and its outbox like a
 //! subscriber. What the agent's person writes to the bot is delivered into the inbox, proposing a
-//! ring; what the agent writes into its outbox for `telegram/<name>` goes to that person's chat.
+//! ring; what the agent writes into its outbox for `telegram:<name>` goes to that person's chat.
 //!
 //! It fetches Telegram's updates by long polling, so it listens on nothing, and watches the
 //! outbox's and the inbox's `new/` by filesystem notifications. Its state directory holds the
@@ -29,7 +29,8 @@ use crate::{
 };
 
 /// The prefix of the names this channel serves, both ways: the person `luis` writes as
-/// `telegram/luis`, and an outbox item for `telegram/luis` reaches them.
+/// `telegram:luis`, and an outbox item for `telegram:luis` reaches them. No Vibe Together name
+/// holds a `:`, so no participant there passes for one of these people.
 pub const CHANNEL: &str = "telegram";
 /// The name messagent's own items in the inbox come from, such as an outbox item it couldn't send.
 pub const SELF: &str = "messagent";
@@ -156,7 +157,7 @@ impl Channel {
   /// Delivers a message into the inbox as its sender's: its file first where it has one, then a
   /// text that says where it is from, what it replies to, and where an answer goes.
   async fn carry(&self, message: &Message, from: &User, name: &str, edited: bool) -> Result<()> {
-    let who = format!("{CHANNEL}/{name}");
+    let who = format!("{CHANNEL}:{name}");
     let mut header = format!("Telegram message from {who}");
     if let Some(username) = &from.username {
       header += &format!(" (@{})", telegram::label(username, 40));
@@ -239,7 +240,7 @@ impl Channel {
 
   /// Sends every outbox item for this channel to its person.
   async fn send_all(&self) {
-    let prefix = format!("{CHANNEL}/");
+    let prefix = format!("{CHANNEL}:");
     let items = match self.outbox.untaken(|who| who.starts_with(&prefix)) {
       Ok(items) => items,
       Err(e) => return eprintln!("messagent: can't read the outbox: {e}"),
