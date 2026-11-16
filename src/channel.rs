@@ -18,7 +18,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use notify::Watcher;
+use notify::{EventKind, Watcher, event::ModifyKind};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
@@ -432,8 +432,18 @@ fn mime_of(ext: &str) -> &'static str {
 
 /// Watches a directory, waking `wake` on each change in it.
 fn watch(dir: &Path, wake: mpsc::UnboundedSender<()>) -> Result<notify::RecommendedWatcher> {
-  let mut watcher = notify::recommended_watcher(move |_: notify::Result<notify::Event>| {
-    let _ = wake.send(());
+  // Only an item arriving or leaving counts: reading the directory, as each scan does, is an
+  // event too on Linux, and would wake the next scan for good.
+  let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+    let moved = event.is_ok_and(|e| {
+      matches!(
+        e.kind,
+        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_))
+      )
+    });
+    if moved {
+      let _ = wake.send(());
+    }
   })?;
   watcher.watch(dir, notify::RecursiveMode::NonRecursive)?;
   Ok(watcher)
