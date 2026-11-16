@@ -24,7 +24,7 @@ Vibe Together's own design, which this builds on, is in the collective's `projec
 ## The bridge
 
 - One bot for everyone, `@vt_messagent_bot`: Telegram gives a bot's updates to one receiver only.
-  It runs on lwirth-server for now, for the accounts its config allows, Luis's alone.
+  It runs on lwirth-server for now, for the Telegram users and accounts its config allows, Luis alone: anyone else is ignored, so no stranger asks for an OTP to phish a link with.
 - The bridge speaks only as the people it carries, and adds no participant of its own.
   - A person links once, by OTP: the bot shows a link and a code, and the person approves on the page that shows the same code.
     With Vibe Together's rewrite (2026-11-11) the bridge grants went, so the OTP is one of a person token, which messagent keeps; open whether Luis agrees.
