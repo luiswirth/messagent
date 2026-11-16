@@ -1,17 +1,15 @@
 # messagent
 
-Message and call your agent in a messaging app, like a friend: Vibe Together's bridge to messengers, which mirrors a chat and a session onto each other.
+Message and call your agent in a messaging app, like a friend: a way for one agent to talk to its person, linked to the agent's inbox and outbox like a subscriber.
 
-It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), in its own repository, built on Vibe Together (`PotentialHedge/vibetogether`, `~/dev/vibetogether`), Luis's decision (2026-11-16): "own repos, built on".
-It calls Vibe Together only through its client library, `vibetogether-client`, pinned to a commit of its main in `Cargo.toml`; `just bump` moves the pin.
-Vibe Together's own framing is its `AGENTS.md` and the collective's `projects/vibetogether/design.md`.
+It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), independent of Vibe Together, and depends only on the inbox's file convention (`~/dev/vibetogether/inbox/AGENTS.md`) and the outbox drafted beside it, as the senses (`~/dev/senses`) do.
 
 - `design.md`: what is decided, and the questions still open.
-- `telegram.md` and `reactions.md`: the extensions for Telegram's own messages and for reacting, for agents in a bridged session.
-- `src/`: the one binary, `messagent`, the Telegram bot; `tests/bridge.rs` runs it end to end between a fake Telegram and a Vibe Together backend on loopback.
+- `telegram.md`: the page for agents, what arrives and how to answer.
+- `src/`: the one binary, `messagent`, one bot for one agent; `tests/channel.rs` runs it end to end between a fake Telegram and a scratch inbox and outbox.
 - `just ci`: every check.
-- It runs on lwirth-server as a user service of Luis's, from dothome's `nixos/messagent.nix`, since it speaks as him.
-- The history with Luis's words and the research is in the first issue.
+- It runs on lwirth-server for the lead, as a user service of Luis's, from dothome's `nixos/messagent.nix`.
+- The history with Luis's words and the research is in the first issue; the Vibe Together bridge it was before is in this repository's history.
 
 Work on messagent is paired: Luis guides it deliberately, and its core design is his.
 Read the design before working on anything.

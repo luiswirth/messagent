@@ -57,8 +57,6 @@ pub struct Update {
   pub update_id: i64,
   pub message: Option<Message>,
   pub edited_message: Option<Message>,
-  pub callback_query: Option<CallbackQuery>,
-  pub my_chat_member: Option<ChatMemberUpdated>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -93,7 +91,6 @@ pub struct PhotoSize {
 pub struct Document {
   pub file_id: String,
   pub file_name: Option<String>,
-  pub mime_type: Option<String>,
   pub file_size: Option<u64>,
 }
 
@@ -113,32 +110,8 @@ pub struct Message {
   pub audio: Option<Document>,
   pub video: Option<Document>,
   pub forward_origin: Option<Value>,
-  pub migrate_to_chat_id: Option<i64>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct CallbackQuery {
-  pub id: String,
-  pub from: User,
-  pub message: Option<CallbackMessage>,
-  pub data: Option<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct CallbackMessage {
-  pub message_id: i64,
-  pub chat: Chat,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct ChatMemberUpdated {
-  pub chat: Chat,
-  pub new_chat_member: ChatMember,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct ChatMember {
-  pub status: String,
+  /// The message it replies to.
+  pub reply_to_message: Option<Box<Message>>,
 }
 
 #[derive(Deserialize)]
@@ -245,12 +218,7 @@ impl Bot {
 
   /// The updates from `offset` on, waiting up to `timeout` seconds for one.
   pub async fn updates(&self, offset: i64, timeout: u64) -> Result<Vec<Update>> {
-    let allowed = [
-      "message",
-      "edited_message",
-      "callback_query",
-      "my_chat_member",
-    ];
+    let allowed = ["message", "edited_message"];
     self
       .call(
         "getUpdates",
@@ -271,25 +239,6 @@ impl Bot {
       body["parse_mode"] = json!("HTML");
     }
     self.send_raw("sendMessage", body).await
-  }
-
-  /// Sends a text with buttons, each `(label, data)`, one per row.
-  pub async fn send_buttons(
-    &self,
-    chat: i64,
-    text: &str,
-    buttons: &[(String, String)],
-  ) -> Result<i64> {
-    let rows: Vec<Value> = buttons
-      .iter()
-      .map(|(label, data)| json!([{"text": label, "callback_data": data}]))
-      .collect();
-    self
-      .send_raw(
-        "sendMessage",
-        json!({"chat_id": chat, "text": text, "reply_markup": {"inline_keyboard": rows}}),
-      )
-      .await
   }
 
   /// Calls a method that sends a message, and gives its id.
@@ -331,35 +280,6 @@ impl Bot {
       .map(drop)
   }
 
-  pub async fn answer_callback(&self, id: &str, text: &str) -> Result<()> {
-    self
-      .call::<Value>(
-        "answerCallbackQuery",
-        &json!({"callback_query_id": id, "text": text}),
-      )
-      .await
-      .map(drop)
-  }
-
-  /// Replaces a message's text, and its buttons with none.
-  pub async fn edit(&self, chat: i64, message: i64, text: &str) -> Result<()> {
-    self
-      .call::<Value>(
-        "editMessageText",
-        &json!({"chat_id": chat, "message_id": message, "text": text}),
-      )
-      .await
-      .map(drop)
-  }
-
-  /// A member's status in a chat, such as `administrator`.
-  pub async fn status(&self, chat: i64, user: i64) -> Result<String> {
-    let member: ChatMember = self
-      .call("getChatMember", &json!({"chat_id": chat, "user_id": user}))
-      .await?;
-    Ok(member.status)
-  }
-
   /// The bytes of a file a message holds.
   pub async fn download(&self, file_id: &str) -> Result<Vec<u8>> {
     #[derive(Deserialize)]
@@ -379,32 +299,6 @@ impl Bot {
       });
     }
     Ok(response.bytes().await?.to_vec())
-  }
-
-  /// Says what Telegram shows of the bot: its commands and descriptions.
-  pub async fn introduce(
-    &self,
-    commands: &[(&str, &str)],
-    description: &str,
-    short: &str,
-  ) -> Result<()> {
-    let commands: Vec<Value> = commands
-      .iter()
-      .map(|(command, description)| json!({"command": command, "description": description}))
-      .collect();
-    self
-      .call::<Value>("setMyCommands", &json!({"commands": commands}))
-      .await?;
-    self
-      .call::<Value>("setMyDescription", &json!({"description": description}))
-      .await?;
-    self
-      .call::<Value>(
-        "setMyShortDescription",
-        &json!({"short_description": short}),
-      )
-      .await?;
-    Ok(())
   }
 }
 
