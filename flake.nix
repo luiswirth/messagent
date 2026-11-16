@@ -7,17 +7,12 @@
 
     treefmt-nix.url = "github:numtide/treefmt-nix";
     treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
-
-    # The relay, for the bridge's test.
-    agentwire.url = "github:luiswirth/agentwire";
-    agentwire.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = {
     nixpkgs,
     rust-overlay,
     treefmt-nix,
-    agentwire,
     ...
   }: let
     forEachSystem = f:
@@ -35,9 +30,6 @@
         bacon
         cargo-edit
         just
-        pkg-config
-        agentwire.packages.${pkgs.stdenv.hostPlatform.system}.default
-        python3
       ];
   in {
     # Every language in the tree, behind one command. The global pre-commit
@@ -51,19 +43,17 @@
         programs.just.enable = true;
       });
 
-    # Both binaries: `messagent`, and `messagent-claude`, which wakes Claude Code.
     packages = forEachSystem (pkgs: {
       default = pkgs.rustPlatform.buildRustPackage {
         pname = "messagent";
-        version = "0.1.0";
+        version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
         src = ./.;
+        # Vibe Together's crates are git dependencies, pinned by Cargo.lock.
         cargoLock = {
           lockFile = ./Cargo.lock;
-          # agentwire's participant library, a git dependency.
-          outputHashes."agentwire-0.1.0" = "sha256-Je57YAZOgWiGsfqEwf99fVfP2WImW8HPRsoG0PAw6Rw=";
+          allowBuiltinFetchGit = true;
         };
-        nativeBuildInputs = [pkgs.pkg-config];
-        buildInputs = [pkgs.libopus];
+        meta.mainProgram = "messagent";
       };
     });
 

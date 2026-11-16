@@ -1,47 +1,48 @@
 # Telegram messages
 
-messagent carries the user's Telegram chat into a Vibe Together room.
-Plain text, Vibe Together's chat as `text/plain` (`https://vibetogether.agentics.lwirth.com/specs/chat.md`), always reaches the user as it is.
+messagent bridges a Telegram chat, private or a group, into a Vibe Together session, as the bot `@vt_messagent_bot` (`https://t.me/vt_messagent_bot`).
+What its people write there reaches the session as them; what is said in the session reaches the chat.
+Chat, Vibe Together's messages (`https://vibetogether.potentialhedge.com/specs/chat.md`), always reaches the chat:
+markdown as Telegram's formatting, with its sender's name, except a person's own agents in their own chat with the bot.
 
-## Images
+## Images and files
 
-Images go both ways, as entries of their image type.
+Images and files go both ways, as entries of their type.
 
-- A photo the user sends arrives as an `image/jpeg` entry, and an image they send as a file as an entry of its type, with its file name.
-  Its caption follows as their chat message.
-  An image's payload is fetched by its number: `sh agentwire fetch <link> <n> <file>`, or `curl -s -o <file> '<me>/<n>'`.
-- An image entry you send reaches the user: a JPEG as a photo, which Telegram recompresses,
-  and any other image, such as a PNG, as a file, which arrives exact, such as a page of text.
+- A photo sent in the chat arrives as an `image/jpeg` entry, and a file, a voice note or a video as an entry of its type, with its file name.
+  Its caption follows as its sender's message.
+  Its payload is fetched by its number: `vibetogether fetch <session> <n> > <file>`.
+- An entry you send reaches the chat: a JPEG as a photo, which Telegram recompresses,
+  and anything else, such as a PNG, as a file, which arrives exact, such as a page of text.
 
 ```sh
-sh agentwire send <link> --type image/png plot.png
+vibetogether send <session> --type image/png --filename plot.png < plot.png
 ```
 
 ## Telegram's own format
 
 Telegram's own formatting, and a caption for an image, go as an entry of their own:
 
-- `application/vnd.agentwire.telegram.message+json`: the body of the Bot API's `sendMessage`,
-  `https://core.telegram.org/bots/api#sendmessage`, passed to Telegram as is.
+- `application/vnd.messagent.telegram+json`: the body of the Bot API's `sendMessage`,
+  `https://core.telegram.org/bots/api#sendmessage`, with these fields alone:
+  `text`, `parse_mode`, `entities`, `link_preview_options`, `disable_notification`.
   messagent sets the chat.
   Its `parse_mode` is `HTML` or `MarkdownV2`, as `https://core.telegram.org/bots/api#formatting-options` describes.
 - With `photo` or `document` instead of `text`, the body of `sendPhoto` or `sendDocument`,
-  where `photo` or `document` is the number of the entry that holds the image, sent before it.
-  Ping messagent alone with that entry, as `ping="<user>/messagent"`, so that it doesn't reach the user on its own too.
-  `caption` and `parse_mode` work as for a text.
+  where `photo` or `document` is the number of the entry that holds the file, sent before it,
+  with `caption`, `caption_entities`, `parse_mode`, `show_caption_above_media` and `has_spoiler`.
+  Ping `messagent` alone with that entry, so that it doesn't reach the chat on its own too.
 
 ```sh
-curl -s -H 'Content-Type: application/vnd.agentwire.telegram.message+json' \
-  --data-binary '{"text":"<b>Done.</b> The tests pass.","parse_mode":"HTML"}' '<me>'
-curl -s -H 'Content-Type: image/png; ping="luis/messagent"' --data-binary @page.png '<me>?filename=page.png'   # {"n":12}
-curl -s -H 'Content-Type: application/vnd.agentwire.telegram.message+json' \
-  --data-binary '{"document":12,"caption":"<b>Today</b>","parse_mode":"HTML"}' '<me>'
+vibetogether send <session> --type application/vnd.messagent.telegram+json <<'MESSAGE'
+{"text": "<b>Done.</b> The tests pass.", "parse_mode": "HTML"}
+MESSAGE
+vibetogether send <session> --type 'image/png; ping="messagent"' --filename page.png < page.png   # entry 12
+vibetogether send <session> --type application/vnd.messagent.telegram+json <<'MESSAGE'
+{"document": 12, "caption": "<b>Today</b>", "parse_mode": "HTML"}
+MESSAGE
 ```
 
-An image or chat message that pings messagent alone never reaches the user by itself;
-a Telegram message always does, whomever it pings.
-A Telegram message without a `ping` pings everyone, as a chat message does.
-What doesn't ping the user reaches them without a notification.
-
-A message Telegram refuses, such as one whose formatting doesn't parse,
-comes back as a notice from `<user>/messagent`.
+What pings `messagent` alone never reaches a chat by itself; a Telegram message always does.
+What pings neither everyone nor its person reaches a private chat without a notification, and what doesn't ping everyone a group.
+A message Telegram refuses, such as one whose formatting doesn't parse, is dropped: the bot says nothing in the session.

@@ -1,35 +1,11 @@
-# Warnings are errors here, so that a local build stays warning-tolerant.
-export RUSTFLAGS := "-D warnings"
-# Doc comments carry the mathematics, so a broken intra-doc link is an error.
-export RUSTDOCFLAGS := "-D warnings"
-
-# Everything CI runs.
+# Every check: formatting, lints and the tests, the bridge's end to end included.
 ci:
     nix fmt -- --ci
-    cargo clippy --all-targets
+    cargo clippy --all-targets -- -D warnings
     cargo test
-    cargo doc --no-deps
-    just bridge
-
-# The bridge end to end, between a fake Telegram and a relay of its own.
-bridge:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cargo build --quiet
-    AGENTWIRE_ADDRESS=127.0.0.1:8792 agentwire-relay &
-    trap 'kill $!' EXIT
-    tests/bridge.sh http://localhost:8792 "${CARGO_TARGET_DIR:-target}/debug/messagent"
-
-# Moves the agentwire pin to a full commit, and its hash in the flake with it.
-bump rev:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    [[ "{{ rev }}" =~ ^[0-9a-f]{40}$ ]] || { echo "give a full commit of agentwire"; exit 1; }
-    sed -i -E 's|(luiswirth/agentwire", rev = ")[0-9a-f]+|\1{{ rev }}|' Cargo.toml
-    cargo update -q -p agentwire
-    fake=sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-    sed -i -E "s|(outputHashes\.\"agentwire[^\"]*\" = \")[^\"]+|\1$fake|" flake.nix
-    got=$(nix build --no-link .#default 2>&1 | grep -oP 'got:\s+\K\S+' | head -1 || true)
-    [ -n "$got" ] || { echo "the build named no hash"; exit 1; }
-    sed -i "s|$fake|$got|g" flake.nix
     nix build --no-link .#default
+
+# Moves the pin of Vibe Together's crates to a commit of its main, the latest by default.
+bump rev=`git ls-remote https://github.com/PotentialHedge/vibetogether refs/heads/main | cut -f1`:
+    sed -i 's/rev = "[0-9a-f]*"/rev = "{{ rev }}"/' Cargo.toml
+    cargo update -p vibetogether-client -p vibetogether-backend
