@@ -4,7 +4,7 @@
 //!
 //! It fetches Telegram's updates by long polling, so it listens on nothing, and watches the
 //! outbox's and the inbox's `new/` by filesystem notifications. Its state directory holds the
-//! offset of the updates (`offset`) and the inbox items not yet taken in, each with its message,
+//! offset of the updates, per bot (`offset-<bot id>`), and the inbox items not yet taken in, each with its message,
 //! to mark it 👀 once the agent takes it (`unseen.json`).
 
 use std::{
@@ -494,7 +494,8 @@ pub async fn serve(settings: Settings) -> Result<()> {
     async move { seer.seen().await }
   })?;
 
-  let offset_file = channel.state.join("offset");
+  // Telegram numbers the updates of each bot apart, so the offset is the bot's own.
+  let offset_file = channel.state.join(format!("offset-{}", me.id));
   let mut offset: i64 = fs::read_to_string(&offset_file)
     .ok()
     .and_then(|s| s.trim().parse().ok())
