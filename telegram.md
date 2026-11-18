@@ -1,7 +1,7 @@
 # Telegram
 
 messagent links an agent's inbox and outbox to a Telegram bot of its own.
-The inbox and its file convention: `https://github.com/PotentialHedge/vibetogether/blob/main/inbox/AGENTS.md`; the outbox is its dual.
+The inbox and its file convention: `https://github.com/luiswirth/agentinbox/blob/main/AGENTS.md`; the outbox is its dual.
 
 ## What arrives
 
@@ -24,7 +24,7 @@ o=$AGENT_OUTBOX; n="$(date -u +%Y%m%dT%H%M%S.%6NZ).telegram%3Aluis.md"
 printf '**Done.** The tests pass.\n' > "$o/tmp/$n" && ln "$o/tmp/$n" "$o/new/$n" && rm "$o/tmp/$n"
 ```
 
-Or, with Vibe Together's command line: `vibetogether outbox send telegram:luis < answer.md`.
+Or, with agentinbox's command line: `agentinbox send telegram:luis < answer.md`.
 
 The name holds a `:`, which no Vibe Together name can, so no participant there passes for one of the bot's people.
 

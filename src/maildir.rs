@@ -1,5 +1,5 @@
 //! The agent's inbox and outbox, by their file convention alone
-//! (`~/dev/vibetogether/inbox/AGENTS.md`, and the outbox drafted beside it):
+//! (`~/dev/agentinbox/AGENTS.md`, with the outbox beside it):
 //! each a directory like a maildir, `new/`, `cur/` and `tmp/`, one file per item, named
 //! `<time>.<name>.<ext>`, the time in UTC to the microsecond, and the name, the inbox's sender or
 //! the outbox's recipient, encoded one to one: a `/` as `_`, and every other byte but ASCII

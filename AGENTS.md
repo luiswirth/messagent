@@ -2,7 +2,7 @@
 
 Message and call your agent in a messaging app, like a friend: a way for one agent to talk to its person, linked to the agent's inbox and outbox like a subscriber.
 
-It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), independent of Vibe Together, and depends only on the inbox's file convention (`~/dev/vibetogether/inbox/AGENTS.md`) and the outbox drafted beside it, as the senses (`~/dev/senses`) do.
+It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), independent of Vibe Together, and depends only on the inbox's file convention (`~/dev/agentinbox/AGENTS.md`) and the outbox beside it, as the senses (`~/dev/senses`) do.
 
 - `design.md`: what is decided, and the questions still open.
 - `telegram.md`: the page for agents, what arrives and how to answer.
