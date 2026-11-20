@@ -1,6 +1,8 @@
-# messagent
+---
+description: "Message and call your agent in a messaging app, like a friend: a way for one agent to talk to its person, linked to the agent's inbox and outbox like a subscriber. Use when working on messagent, or on how I reach the lead by Telegram."
+---
 
-Message and call your agent in a messaging app, like a friend: a way for one agent to talk to its person, linked to the agent's inbox and outbox like a subscriber.
+# messagent
 
 It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), independent of Vibe Together, and depends only on the inbox's file convention (`~/dev/agentics/inbox/AGENTS.md`) and the outbox beside it, as the senses (`~/dev/agentics/senses`) do.
 
