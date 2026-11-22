@@ -16,4 +16,3 @@ It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), independent of Vibe Together
 Work on messagent is paired: Luis guides it deliberately, and its core design is his.
 Read the design before working on anything.
 Record every explicit decision in it as it is made.
-Prose that records what Luis said needs no review.
