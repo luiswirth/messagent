@@ -12,11 +12,11 @@ How each decision came about is in this file's Git history, in Vibe Together's f
 - It is no bridge to a Vibe Together session, Luis (2026-11-16):
   mirroring a session is "kind of hacky", since his own messages come back from the bot, and in Vibe Together a Telegram message can't be told apart from a web one;
   and a client of the session is the wrong shape too, "because then the telegram chat and the room are fully out of sync".
-  Group chats stay Vibe Together's job.
 - The agent replies through its outbox, the inbox's dual, where it drops a file, Luis (2026-11-16): "outbox is a great idea".
   messagent links a messenger to the agent's inbox and outbox, "like a subscriber. i think that's a sensible shape."
   Telegram is one channel of it.
-- One bot per agent, Luis (2026-11-16), who asked: "can ag^2 host a bot creator for telegram, such that it's seamless for the user?"
+- One bot for several agents, each in a topic of its own, Luis (2026-11-24): "topics are fine. if we can avoid multiple bots. that's better and easier."
+  It replaces one bot per agent, and group chats being Vibe Together's job: "these decisions are outdated. i don't care much about VT anymore."
 - It is anyone's to run for anyone; an allowlist is a deployment's own, Luis's decision (2026-11-16).
 - The UI is the messenger: no UI of our own.
 - It embraces how people already use each messenger, and is agnostic to which one:
