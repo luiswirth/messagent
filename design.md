@@ -17,6 +17,8 @@ How each decision came about is in this file's Git history, in Vibe Together's f
   Telegram is one channel of it.
 - One bot for several agents, each in a topic of its own, Luis (2026-11-24): "topics are fine. if we can avoid multiple bots. that's better and easier."
   It replaces one bot per agent, and group chats being Vibe Together's job: "these decisions are outdated. i don't care much about VT anymore."
+- Everything happens in topics, one per agent, the lead included, created by messagent and named after the agent, Luis (2026-11-24): "yes this makes sense".
+  A message outside the topics reaches no agent: the bot answers with the topics there are.
 - It is anyone's to run for anyone; an allowlist is a deployment's own, Luis's decision (2026-11-16).
 - The UI is the messenger: no UI of our own.
 - It embraces how people already use each messenger, and is agnostic to which one:

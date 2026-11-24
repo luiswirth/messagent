@@ -10,21 +10,25 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 
-/// Links one agent's inbox and outbox to a Telegram bot of its own: what its people write to the
-/// bot is delivered into the inbox as from `telegram:<name>`, and what the agent writes into its
-/// outbox for `telegram:<name>` reaches that person's chat.
+/// Links agents' inboxes and outboxes to one Telegram bot, each agent in a topic of its own in each
+/// person's chat with the bot: what a person writes in an agent's topic is delivered into its inbox
+/// as from `telegram:<name>`, and what the agent writes into its outbox for `telegram:<name>`
+/// reaches its topic in that person's chat.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {
   /// A file holding the bot's token, from BotFather.
   #[arg(long, value_name = "FILE")]
   bot_token: PathBuf,
-  /// The agent's inbox.
-  #[arg(long, env = "AGENT_INBOX", value_name = "DIR")]
-  inbox: PathBuf,
-  /// The agent's outbox.
-  #[arg(long, env = "AGENT_OUTBOX", value_name = "DIR")]
-  outbox: PathBuf,
+  /// An agent the bot serves, by its name, which its topic takes; repeated for several.
+  #[arg(long, value_name = "NAME", required = true)]
+  agent: Vec<String>,
+  /// The directory of the agents' inboxes, each `<dir>/<agent>`; by default `~/.agents/inbox`.
+  #[arg(long, value_name = "DIR")]
+  inboxes: Option<PathBuf>,
+  /// The directory of the agents' outboxes, each `<dir>/<agent>`; by default `~/.agents/outbox`.
+  #[arg(long, value_name = "DIR")]
+  outboxes: Option<PathBuf>,
   /// A person who may write to the bot, as `<telegram id>=<name>`, such as `9118774471=luis`;
   /// repeated for several. Everyone else is ignored.
   #[arg(long, value_name = "ID=NAME", required = true)]
@@ -59,10 +63,42 @@ async fn main() -> Result<()> {
       ))
     })
     .collect::<Result<_>>()?;
+  let agents_dir = || -> Result<PathBuf> {
+    let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
+    Ok(PathBuf::from(home).join(".agents"))
+  };
+  let inboxes = match cli.inboxes {
+    Some(dir) => dir,
+    None => agents_dir()?.join("inbox"),
+  };
+  let outboxes = match cli.outboxes {
+    Some(dir) => dir,
+    None => agents_dir()?.join("outbox"),
+  };
+  let mut agents = Vec::new();
+  for name in cli.agent {
+    let valid = !name.is_empty()
+      && name.len() <= 128
+      && name
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    if !valid {
+      return Err(anyhow!(
+        "an agent's name is letters, digits, `-` and `_`, not `{name}`"
+      ));
+    }
+    if agents.iter().any(|a: &channel::Agent| a.name == name) {
+      return Err(anyhow!("the agent `{name}` is given twice"));
+    }
+    agents.push(channel::Agent {
+      inbox: maildir::Maildir::new(inboxes.join(&name)),
+      outbox: maildir::Maildir::new(outboxes.join(&name)),
+      name,
+    });
+  }
   channel::serve(channel::Settings {
     bot: telegram::Bot::new(&cli.telegram_api, token.trim()),
-    inbox: maildir::Maildir::new(cli.inbox),
-    outbox: maildir::Maildir::new(cli.outbox),
+    agents,
     people,
     state: cli.state,
   })

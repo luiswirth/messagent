@@ -1,11 +1,12 @@
 # Telegram
 
-messagent links an agent's inbox and outbox to a Telegram bot of its own.
+messagent links agents' inboxes and outboxes to one Telegram bot, each agent in a topic of its own, named after it, in each person's private chat with the bot.
+The bot needs Threaded Mode, which its owner turns on in BotFather's mini app.
 The inbox and its file convention: `https://github.com/luiswirth/agentinbox/blob/main/AGENTS.md`; the outbox is its dual.
 
 ## What arrives
 
-A message from one of the bot's people, in their private chat with it, arrives in the inbox as an item from `telegram:<name>`, proposing a ring:
+A message from one of the bot's people, in an agent's topic, arrives in that agent's inbox as an item from `telegram:<name>`, proposing a ring:
 a text item whose first line says it is a Telegram message, from whom, and what it replies to, quoted, where it replies to one.
 A photo, a file, a voice note or a video arrives as an item of its own, before the text, which names it.
 Once the agent takes an item in, its message gets 👀 in Telegram.
@@ -13,7 +14,7 @@ Once the agent takes an item in, its message gets 👀 in Telegram.
 ## Answering
 
 An answer is an item for `telegram:<name>` in the outbox: written into `tmp/`, then hard-linked into `new/`, named `<time>.telegram%3A<name>.<ext>`, as the inbox names its items.
-messagent sends it by its extension:
+messagent sends it into the agent's topic, by its extension:
 
 - `md`: markdown, as Telegram's formatting; `txt`: plain text.
 - `jpg`: a photo, which Telegram recompresses; any other, such as `png` or `pdf`, a file, which arrives exact.

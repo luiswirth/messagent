@@ -8,7 +8,7 @@ It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), independent of Vibe Together
 
 - `design.md`: what is decided, and the questions still open.
 - `telegram.md`: the page for agents, what arrives and how to answer.
-- `src/`: the one binary, `messagent`, one bot for one agent; `tests/channel.rs` runs it end to end between a fake Telegram and a scratch inbox and outbox.
+- `src/`: the one binary, `messagent`, one bot for several agents, each in a topic of its own; `tests/channel.rs` runs it end to end between a fake Telegram and scratch inboxes and outboxes.
 - `just ci`: every check.
 - It runs on lwirth-server for the lead, as a user service of Luis's, from dothome's `nixos/messagent.nix`.
 - The history with Luis's words and the research is in the first issue; the Vibe Together bridge it was before is in this repository's history.

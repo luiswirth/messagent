@@ -1,11 +1,14 @@
-//! messagent's Telegram channel: one bot for one agent, linked to its inbox and its outbox like a
-//! subscriber. What the agent's person writes to the bot is delivered into the inbox, proposing a
-//! ring; what the agent writes into its outbox for `telegram:<name>` goes to that person's chat.
+//! messagent's Telegram channel: one bot for several agents, each in a topic of its own in each
+//! person's private chat with the bot, and linked to the agent's inbox and outbox like a
+//! subscriber. What a person writes in an agent's topic is delivered into that agent's inbox,
+//! proposing a ring; what the agent writes into its outbox for `telegram:<name>` goes to its topic
+//! in that person's chat.
 //!
-//! It fetches Telegram's updates by long polling, so it listens on nothing, and watches the
-//! outbox's and the inbox's `new/` by filesystem notifications. Its state directory holds the
-//! offset of the updates, per bot (`offset-<bot id>`), and the inbox items not yet taken in, each with its message,
-//! to mark it 👀 once the agent takes it (`unseen.json`).
+//! It fetches Telegram's updates by long polling, so it listens on nothing, and watches each
+//! outbox's and inbox's `new/` by filesystem notifications. Its state directory holds the offset
+//! of the updates, per bot (`offset-<bot id>`), each agent's topic in each chat
+//! (`topics.json`, by `<chat>/<agent>`), and the inbox items not yet taken in, each with its
+//! message, to mark it 👀 once the agent takes it (`unseen.json`, by `<agent>/<item>`).
 
 use std::{
   collections::BTreeMap,
@@ -19,13 +22,13 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use notify::{EventKind, Watcher, event::ModifyKind};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::{
   maildir::{Maildir, Name},
   markdown,
-  telegram::{self, Bot, Message, Upload, User},
+  telegram::{self, Bot, Message, To, Upload, User},
 };
 
 /// The prefix of the names this channel serves, both ways: the person `luis` writes as
@@ -39,11 +42,17 @@ const MAX_PIECES: usize = 20;
 /// The longest piece of markdown, leaving room for its tags as HTML.
 const PIECE: usize = 3000;
 
+/// An agent the bot serves: its name, which is its topic's, and its inbox and outbox.
+pub struct Agent {
+  pub name: String,
+  pub inbox: Maildir,
+  pub outbox: Maildir,
+}
+
 /// What the channel runs with.
 pub struct Settings {
   pub bot: Bot,
-  pub inbox: Maildir,
-  pub outbox: Maildir,
+  pub agents: Vec<Agent>,
   /// The people who may write to the bot, by Telegram id, each with their name.
   pub people: Vec<(i64, String)>,
   pub state: PathBuf,
@@ -51,12 +60,22 @@ pub struct Settings {
 
 struct Channel {
   bot: Bot,
-  inbox: Maildir,
-  outbox: Maildir,
+  agents: Vec<Agent>,
   people: Vec<(i64, String)>,
   state: PathBuf,
-  /// The inbox items not yet taken in, each with its chat and message.
+  /// Each agent's topic in each chat, by `<chat>/<agent>`.
+  topics: Mutex<BTreeMap<String, i64>>,
+  /// The inbox items not yet taken in, by `<agent>/<item>`, each with its chat and message.
   unseen: Mutex<BTreeMap<String, (i64, i64)>>,
+}
+
+/// Reads a JSON state file, empty where there is none yet.
+fn read_state<T: serde::de::DeserializeOwned + Default>(path: &Path) -> Result<T> {
+  match fs::read(path) {
+    Ok(bytes) => serde_json::from_slice(&bytes).with_context(|| format!("{}", path.display())),
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(T::default()),
+    Err(e) => Err(e.into()),
+  }
 }
 
 /// Writes a file readable by its owner alone, whole or not at all.
@@ -91,29 +110,69 @@ impl Channel {
       .map(|(id, _)| *id)
   }
 
-  fn save_unseen(&self, unseen: &BTreeMap<String, (i64, i64)>) {
-    let saved = serde_json::to_vec(unseen)
+  fn save(&self, file: &str, value: &impl serde::Serialize) {
+    let saved = serde_json::to_vec(value)
       .map_err(anyhow::Error::from)
-      .and_then(|bytes| write_private(&self.state.join("unseen.json"), &bytes));
+      .and_then(|bytes| write_private(&self.state.join(file), &bytes));
     if let Err(e) = saved {
-      eprintln!("messagent: can't save what is unseen: {e:#}");
+      eprintln!("messagent: can't save {file}: {e:#}");
     }
   }
 
-  async fn tell(&self, chat: i64, text: &str) {
-    if let Err(e) = self.bot.send(chat, text, false, true).await {
-      eprintln!("messagent: can't tell chat {chat}: {e}");
+  /// The agent whose topic in `chat` is `topic`.
+  fn agent_of(&self, chat: i64, topic: Option<i64>) -> Option<usize> {
+    let topic = topic?;
+    let topics = self.topics.lock().expect("no holder panics");
+    self
+      .agents
+      .iter()
+      .position(|a| topics.get(&format!("{chat}/{}", a.name)) == Some(&topic))
+  }
+
+  /// The agent's topic in `chat`, created where it has none yet.
+  async fn topic(&self, chat: i64, agent: usize) -> Result<i64> {
+    let key = format!("{chat}/{}", self.agents[agent].name);
+    if let Some(topic) = self.topics.lock().expect("no holder panics").get(&key) {
+      return Ok(*topic);
+    }
+    let topic = self
+      .bot
+      .create_topic(chat, &self.agents[agent].name)
+      .await
+      .with_context(|| format!("can't create the topic {}", self.agents[agent].name))?;
+    let mut topics = self.topics.lock().expect("no holder panics");
+    topics.insert(key, topic);
+    self.save("topics.json", &*topics);
+    Ok(topic)
+  }
+
+  /// Forgets the agent's topic in `chat`, once it is gone, so that the next message creates it anew.
+  fn forget_topic(&self, chat: i64, agent: usize) {
+    let mut topics = self.topics.lock().expect("no holder panics");
+    topics.remove(&format!("{chat}/{}", self.agents[agent].name));
+    self.save("topics.json", &*topics);
+  }
+
+  /// The agents' names, as a person reads them.
+  fn names(&self) -> String {
+    let names: Vec<&str> = self.agents.iter().map(|a| a.name.as_str()).collect();
+    names.join(", ")
+  }
+
+  async fn tell(&self, to: To, text: &str) {
+    if let Err(e) = self.bot.send(to, text, false, true).await {
+      eprintln!("messagent: can't tell chat {}: {e}", to.chat);
     }
   }
 
-  /// Tells the agent something of messagent's own, through its inbox, proposing a ring.
-  fn notice(&self, text: &str) {
-    let delivered = self
-      .inbox
+  /// Tells an agent something of messagent's own, through its inbox, proposing a ring.
+  fn notice(&self, agent: usize, text: &str) {
+    let inbox = &self.agents[agent].inbox;
+    let delivered = inbox
       .deliver(format!("messagent: {text}\n").as_bytes(), SELF, "txt")
       .and_then(|_| {
-        if self.inbox.rings(&[("from", SELF)], true)? {
-          self.inbox.ring()?;
+        if inbox.rings(&[("from", SELF)], true)? {
+          inbox.ring()?;
         }
         Ok(())
       });
@@ -122,7 +181,8 @@ impl Channel {
     }
   }
 
-  /// Takes in one message from Telegram: one of the people's, in their private chat with the bot.
+  /// Takes in one message from Telegram: one of the people's, in an agent's topic of their private
+  /// chat with the bot.
   async fn message(&self, message: &Message, edited: bool) {
     let Some(from) = message.from.as_ref().filter(|f| !f.is_bot) else {
       return;
@@ -135,28 +195,57 @@ impl Channel {
       return;
     }
     let chat = message.chat.id;
-    if !edited
-      && let Some(text) = &message.text
-      && text.split_whitespace().next() == Some("/start")
-    {
+    let here = To {
+      chat,
+      topic: message.message_thread_id,
+    };
+    let start = !edited
+      && message
+        .text
+        .as_deref()
+        .is_some_and(|t| t.split_whitespace().next() == Some("/start"));
+    if start {
+      // Each agent's topic, created where it is missing, such as on the first start.
+      for agent in 0..self.agents.len() {
+        if let Err(e) = self.topic(chat, agent).await {
+          eprintln!("messagent: {e:#}");
+        }
+      }
+    }
+    let Some(agent) = self.agent_of(chat, message.message_thread_id) else {
+      let text = format!(
+        "Each agent has a topic of its own here: {}. What you write in one reaches that agent.",
+        self.names()
+      );
+      return self.tell(here, &text).await;
+    };
+    if start {
       return self
         .tell(
-          chat,
+          here,
           "What you write here reaches the agent's inbox, and its answers come back here.",
         )
         .await;
     }
-    if let Err(e) = self.carry(message, from, &name, edited).await {
+    if let Err(e) = self.carry(agent, message, from, &name, edited).await {
       eprintln!("messagent: a message didn't reach the inbox: {e:#}");
       self
-        .tell(chat, &format!("That didn't reach the agent: {e}"))
+        .tell(here, &format!("That didn't reach the agent: {e}"))
         .await;
     }
   }
 
   /// Delivers a message into the inbox as its sender's: its file first where it has one, then a
   /// text that says where it is from, what it replies to, and where an answer goes.
-  async fn carry(&self, message: &Message, from: &User, name: &str, edited: bool) -> Result<()> {
+  async fn carry(
+    &self,
+    agent: usize,
+    message: &Message,
+    from: &User,
+    name: &str,
+    edited: bool,
+  ) -> Result<()> {
+    let Agent { inbox, outbox, .. } = &self.agents[agent];
     let who = format!("{CHANNEL}:{name}");
     let mut header = format!("Telegram message from {who}");
     if let Some(username) = &from.username {
@@ -183,7 +272,7 @@ impl Channel {
         return Err(anyhow!("the file is too large"));
       }
       let bytes = self.bot.download(&id).await?;
-      let file = self.inbox.deliver(&bytes, &who, &ext)?;
+      let file = inbox.deliver(&bytes, &who, &ext)?;
       lines.push(format!("[{kind}: the inbox item {file}]"));
       delivered.push(file);
     }
@@ -192,21 +281,33 @@ impl Channel {
     }
     lines.push(format!(
       "(An answer is an item for {who} in the outbox {}.)",
-      self.outbox.root.display()
+      outbox.root.display()
     ));
-    let file = self
-      .inbox
-      .deliver(lines.join("\n").as_bytes(), &who, "txt")?;
+    let file = inbox.deliver(lines.join("\n").as_bytes(), &who, "txt")?;
     delivered.push(file);
-    if self.inbox.rings(&[("from", &who)], true)? {
-      self.inbox.ring()?;
+    if inbox.rings(&[("from", &who)], true)? {
+      inbox.ring()?;
     }
     let mut unseen = self.unseen.lock().expect("no holder panics");
     for file in delivered {
-      unseen.insert(file, (message.chat.id, message.message_id));
+      unseen.insert(
+        format!("{}/{file}", self.agents[agent].name),
+        (message.chat.id, message.message_id),
+      );
     }
-    self.save_unseen(&unseen);
+    self.save("unseen.json", &*unseen);
     Ok(())
+  }
+
+  /// Whether an item, by `<agent>/<item>`, is still in its inbox's `new/`; one of an agent no
+  /// longer served counts as taken.
+  fn is_new(&self, key: &str) -> bool {
+    key.split_once('/').is_some_and(|(name, file)| {
+      self
+        .agents
+        .iter()
+        .any(|a| a.name == name && a.inbox.is_new(file))
+    })
   }
 
   /// Marks 👀 the messages whose items the agent has taken in.
@@ -215,7 +316,7 @@ impl Channel {
       let unseen = self.unseen.lock().expect("no holder panics");
       unseen
         .iter()
-        .filter(|(file, _)| !self.inbox.is_new(file))
+        .filter(|(key, _)| !self.is_new(key))
         .map(|(file, at)| (file.clone(), *at))
         .collect()
     };
@@ -232,21 +333,22 @@ impl Channel {
       }
     }
     let mut unseen = self.unseen.lock().expect("no holder panics");
-    for (file, _) in taken {
-      unseen.remove(&file);
+    for (key, _) in taken {
+      unseen.remove(&key);
     }
-    self.save_unseen(&unseen);
+    self.save("unseen.json", &*unseen);
   }
 
-  /// Sends every outbox item for this channel to its person.
-  async fn send_all(&self) {
+  /// Sends every item of an agent's outbox for this channel to its person, in the agent's topic.
+  async fn send_all(&self, agent: usize) {
+    let outbox = &self.agents[agent].outbox;
     let prefix = format!("{CHANNEL}:");
-    let items = match self.outbox.untaken(|who| who.starts_with(&prefix)) {
+    let items = match outbox.untaken(|who| who.starts_with(&prefix)) {
       Ok(items) => items,
       Err(e) => return eprintln!("messagent: can't read the outbox: {e}"),
     };
     for item in items {
-      let path = match self.outbox.take(&item) {
+      let path = match outbox.take(&item) {
         Ok(Some(path)) => path,
         Ok(None) => continue,
         Err(e) => {
@@ -254,19 +356,23 @@ impl Channel {
           continue;
         }
       };
-      if let Err(e) = self.send(&item, &path).await {
+      if let Err(e) = self.send(agent, &item, &path).await {
         eprintln!("messagent: {} wasn't sent: {e:#}", item.file);
-        self.notice(&format!(
-          "the outbox item {} for {} wasn't sent: {e}",
-          item.file, item.who
-        ));
+        self.notice(
+          agent,
+          &format!(
+            "the outbox item {} for {} wasn't sent: {e}",
+            item.file, item.who
+          ),
+        );
       }
     }
   }
 
   /// Sends one outbox item by its type: markdown and text as text, a JPEG as a photo, `json` as
-  /// Telegram's own `sendMessage`, and anything else as a file.
-  async fn send(&self, item: &Name, path: &Path) -> Result<()> {
+  /// Telegram's own `sendMessage`, and anything else as a file. A topic found gone is created anew,
+  /// once.
+  async fn send(&self, agent: usize, item: &Name, path: &Path) -> Result<()> {
     let name = &item.who[CHANNEL.len() + 1..];
     let chat = self
       .chat_of(name)
@@ -274,7 +380,12 @@ impl Channel {
     let bytes = fs::read(path)?;
     let ext = item.ext.to_ascii_lowercase();
     let mut delay = Duration::from_secs(1);
+    let mut recreated = false;
     loop {
+      let chat = To {
+        chat,
+        topic: Some(self.topic(chat, agent).await?),
+      };
       let sent = match ext.as_str() {
         "md" | "txt" => {
           self
@@ -296,7 +407,7 @@ impl Channel {
           };
           self
             .bot
-            .send_file(method, field, &upload, json!({"chat_id": chat}))
+            .send_file(method, field, &upload, chat.body())
             .await
             .map(drop)
             .map_err(anyhow::Error::from)
@@ -304,6 +415,15 @@ impl Channel {
       };
       match sent {
         Ok(()) => return Ok(()),
+        Err(e)
+          if !recreated
+            && e
+              .downcast_ref::<telegram::Error>()
+              .is_some_and(telegram::Error::topic_gone) =>
+        {
+          self.forget_topic(chat.chat, agent);
+          recreated = true;
+        }
         Err(e)
           if e
             .downcast_ref::<telegram::Error>()
@@ -319,7 +439,7 @@ impl Channel {
   }
 
   /// Sends a text, markdown as Telegram's HTML; formatting Telegram refuses goes as plain text.
-  async fn text(&self, chat: i64, text: &str, markdown: bool) -> Result<()> {
+  async fn text(&self, chat: To, text: &str, markdown: bool) -> Result<()> {
     let mut pieces = telegram::split(text, PIECE);
     if pieces.len() > MAX_PIECES {
       pieces.truncate(MAX_PIECES);
@@ -354,7 +474,7 @@ impl Channel {
 
   /// Sends a message in Telegram's own format, with these fields alone, so that it reaches this
   /// chat and does nothing else.
-  async fn native(&self, chat: i64, body: &[u8]) -> Result<()> {
+  async fn native(&self, chat: To, body: &[u8]) -> Result<()> {
     const FIELDS: &[&str] = &[
       "text",
       "parse_mode",
@@ -373,7 +493,9 @@ impl Channel {
     if !message.contains_key("text") {
       return Err(anyhow!("a Telegram message has a text"));
     }
-    message.insert("chat_id".into(), json!(chat));
+    if let Value::Object(to) = chat.body() {
+      message.extend(to);
+    }
     self
       .bot
       .send_raw("sendMessage", Value::Object(message))
@@ -473,36 +595,55 @@ where
 pub async fn serve(settings: Settings) -> Result<()> {
   fs::create_dir_all(&settings.state)?;
   fs::set_permissions(&settings.state, fs::Permissions::from_mode(0o700))?;
-  settings.inbox.create()?;
-  settings.outbox.create()?;
-  let unseen = match fs::read(settings.state.join("unseen.json")) {
-    Ok(bytes) => serde_json::from_slice(&bytes).context("unseen.json")?,
-    Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
-    Err(e) => return Err(e.into()),
-  };
+  for agent in &settings.agents {
+    agent.inbox.create()?;
+    agent.outbox.create()?;
+  }
+  let topics = read_state(&settings.state.join("topics.json"))?;
+  let mut unseen: BTreeMap<String, (i64, i64)> = read_state(&settings.state.join("unseen.json"))?;
+  // An item kept before the agents had topics names no agent: it is let go.
+  unseen.retain(|key, _| key.contains('/'));
   let me = settings.bot.me().await.context("the bot's token")?;
   let channel = Arc::new(Channel {
     bot: settings.bot,
-    inbox: settings.inbox,
-    outbox: settings.outbox,
+    agents: settings.agents,
     people: settings.people,
     state: settings.state,
+    topics: Mutex::new(topics),
     unseen: Mutex::new(unseen),
   });
   eprintln!(
-    "messagent: serving as @{}",
+    "messagent: serving {} as @{}",
+    channel.names(),
     me.username.as_deref().unwrap_or("?")
   );
-  let sender = channel.clone();
-  let _outbox = on_change(&channel.outbox.new_dir(), move || {
-    let sender = sender.clone();
-    async move { sender.send_all().await }
-  })?;
-  let seer = channel.clone();
-  let _inbox = on_change(&channel.inbox.new_dir(), move || {
-    let seer = seer.clone();
-    async move { seer.seen().await }
-  })?;
+  // Each agent's topic in each person's chat, created where it is missing.
+  for (chat, _) in &channel.people {
+    for agent in 0..channel.agents.len() {
+      if let Err(e) = channel.topic(*chat, agent).await {
+        eprintln!("messagent: {e:#}");
+      }
+    }
+  }
+  let mut watchers = Vec::new();
+  for agent in 0..channel.agents.len() {
+    let sender = channel.clone();
+    watchers.push(on_change(
+      &channel.agents[agent].outbox.new_dir(),
+      move || {
+        let sender = sender.clone();
+        async move { sender.send_all(agent).await }
+      },
+    )?);
+    let seer = channel.clone();
+    watchers.push(on_change(
+      &channel.agents[agent].inbox.new_dir(),
+      move || {
+        let seer = seer.clone();
+        async move { seer.seen().await }
+      },
+    )?);
+  }
 
   // Telegram numbers the updates of each bot apart, so the offset is the bot's own.
   let offset_file = channel.state.join(format!("offset-{}", me.id));

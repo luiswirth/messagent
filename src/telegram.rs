@@ -42,6 +42,20 @@ impl Error {
       Error::Refused { code, .. } => *code == 429 || *code >= 500,
     }
   }
+
+  /// Whether the topic it was sent to is gone, such as deleted by the person.
+  pub fn topic_gone(&self) -> bool {
+    match self {
+      Error::Refused {
+        code: 400,
+        description,
+      } => {
+        let description = description.to_ascii_lowercase();
+        description.contains("thread not found") || description.contains("topic_deleted")
+      }
+      _ => false,
+    }
+  }
 }
 
 impl From<reqwest::Error> for Error {
@@ -98,6 +112,8 @@ pub struct Document {
 pub struct Message {
   pub message_id: i64,
   pub chat: Chat,
+  /// The topic it is in, in a chat with topics.
+  pub message_thread_id: Option<i64>,
   pub from: Option<User>,
   /// Who sent it on behalf of a chat, such as an anonymous admin: then `from` is no person.
   pub sender_chat: Option<Chat>,
@@ -126,6 +142,24 @@ struct Answer {
 #[derive(Deserialize)]
 struct Parameters {
   retry_after: Option<u64>,
+}
+
+/// Where a message goes: a chat, and a topic in it where there is one.
+#[derive(Clone, Copy, Debug)]
+pub struct To {
+  pub chat: i64,
+  pub topic: Option<i64>,
+}
+
+impl To {
+  /// The fields of a sending method's body that say where it goes.
+  pub fn body(self) -> Value {
+    let mut body = json!({"chat_id": self.chat});
+    if let Some(topic) = self.topic {
+      body["message_thread_id"] = json!(topic);
+    }
+    body
+  }
 }
 
 /// A file to upload.
@@ -227,18 +261,28 @@ impl Bot {
       .await
   }
 
-  /// Sends a text, and gives its message's id.
-  pub async fn send(&self, chat: i64, text: &str, html: bool, quiet: bool) -> Result<i64> {
-    let mut body = json!({
-      "chat_id": chat,
-      "text": text,
-      "disable_notification": quiet,
-      "link_preview_options": {"is_disabled": true},
-    });
+  /// Sends a text, into a topic where there is one, and gives its message's id.
+  pub async fn send(&self, to: To, text: &str, html: bool, quiet: bool) -> Result<i64> {
+    let mut body = to.body();
+    body["text"] = json!(text);
+    body["disable_notification"] = json!(quiet);
+    body["link_preview_options"] = json!({"is_disabled": true});
     if html {
       body["parse_mode"] = json!("HTML");
     }
     self.send_raw("sendMessage", body).await
+  }
+
+  /// Creates a topic in a chat, and gives its id.
+  pub async fn create_topic(&self, chat: i64, name: &str) -> Result<i64> {
+    #[derive(Deserialize)]
+    struct Topic {
+      message_thread_id: i64,
+    }
+    let topic: Topic = self
+      .call("createForumTopic", &json!({"chat_id": chat, "name": name}))
+      .await?;
+    Ok(topic.message_thread_id)
   }
 
   /// Calls a method that sends a message, and gives its id.

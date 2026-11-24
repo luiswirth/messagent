@@ -1,5 +1,5 @@
-//! The channel end to end: messagent's binary between a fake Telegram and an agent's inbox and
-//! outbox in a scratch directory.
+//! The channel end to end: messagent's binary between a fake Telegram and two agents' inboxes and
+//! outboxes in a scratch directory, each agent in a topic of its own.
 
 use std::{
   collections::VecDeque,
@@ -30,6 +30,9 @@ struct Fake {
   next_update: i64,
   calls: Vec<Call>,
   next_message: i64,
+  next_topic: i64,
+  /// The topics the person deleted: sending into one is refused.
+  deleted: Vec<i64>,
 }
 
 type Shared = Arc<Mutex<Fake>>;
@@ -56,6 +59,23 @@ async fn bot_api(
       json!(updates)
     }
     "getFile" => json!({"file_id": "f", "file_path": "photos/f.jpg"}),
+    "createForumTopic" => {
+      fake_state.next_topic += 1;
+      json!({"message_thread_id": 100 + fake_state.next_topic, "name": "x", "icon_color": 0})
+    }
+    "sendMessage" | "sendPhoto" | "sendDocument"
+      if fake_state.deleted.iter().any(|t| {
+        fake_state
+          .calls
+          .last()
+          .unwrap()
+          .body
+          .contains(&format!("\"message_thread_id\":{t}"))
+      }) =>
+    {
+      return json!({"ok": false, "error_code": 400, "description": "Bad Request: message thread not found"})
+        .to_string();
+    }
     "sendMessage" | "sendPhoto" | "sendDocument" => {
       fake_state.next_message += 1;
       json!({"message_id": 1000 + fake_state.next_message})
@@ -152,7 +172,9 @@ async fn carries_both_ways() {
   let dir = std::env::temp_dir().join(format!("messagent-test-{}", std::process::id()));
   let _ = fs::remove_dir_all(&dir);
   fs::create_dir_all(&dir).unwrap();
-  let (inbox, outbox) = (dir.join("inbox"), dir.join("outbox"));
+  // The agents `lead`, the first topic, 101, and `news`, the second, 102.
+  let (inbox, outbox) = (dir.join("inbox/lead"), dir.join("outbox/lead"));
+  let (news_inbox, news_outbox) = (dir.join("inbox/news"), dir.join("outbox/news"));
 
   let fake: Shared = Default::default();
   let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -171,23 +193,57 @@ async fn carries_both_ways() {
   let _messagent = Killed(
     Command::new(env!("CARGO_BIN_EXE_messagent"))
       .args(["--bot-token", token.to_str().unwrap()])
-      .args(["--inbox", inbox.to_str().unwrap()])
-      .args(["--outbox", outbox.to_str().unwrap()])
+      .args(["--agent", "lead", "--agent", "news"])
+      .args(["--inboxes", dir.join("inbox").to_str().unwrap()])
+      .args(["--outboxes", dir.join("outbox").to_str().unwrap()])
       .args(["--state", dir.join("state").to_str().unwrap()])
       .args(["--person", "7=luis", "--telegram-api", &telegram])
       .spawn()
       .unwrap(),
   );
 
+  // Each agent's topic in Luis's chat is created at the start.
+  called(&fake, "createForumTopic", "\"name\":\"lead\"").await;
+  called(&fake, "createForumTopic", "\"name\":\"news\"").await;
   // A stranger is ignored.
   push(&fake, message(1, 8, json!({"text": "hi"})));
-  // Luis's message reaches the inbox as his, with what it replies to, and rings.
+  // A message outside the topics is told where the agents are, and reaches no one.
+  push(&fake, message(9, 7, json!({"text": "anyone?"})));
+  called(
+    &fake,
+    "sendMessage",
+    "Each agent has a topic of its own here: lead, news.",
+  )
+  .await;
+  // Luis's message in the news topic reaches the news agent alone.
+  push(
+    &fake,
+    message(
+      10,
+      7,
+      json!({"text": "what's new?", "message_thread_id": 102}),
+    ),
+  );
+  until("a news item", || !files(&news_inbox.join("new")).is_empty()).await;
+  let text = fs::read_to_string(&files(&news_inbox.join("new"))[0]).unwrap();
+  assert!(text.contains("what's new?"), "{text}");
+  assert!(text.contains(news_outbox.to_str().unwrap()), "{text}");
+  // The news agent's answer goes into its topic.
+  write_outbox(
+    &news_outbox,
+    "20261116T170000.000000Z.telegram%3Aluis.md",
+    b"Nothing yet.",
+  );
+  let sent = called(&fake, "sendMessage", "Nothing yet.").await;
+  assert!(sent.body.contains("\"message_thread_id\":102"), "{sent:?}");
+  // Luis's message in the lead's topic reaches the lead's inbox as his, with what it replies to,
+  // and rings.
   push(
     &fake,
     message(
       2,
       7,
-      json!({"text": "how is it going?", "reply_to_message": {
+      json!({"text": "how is it going?", "message_thread_id": 101, "reply_to_message": {
         "message_id": 1, "chat": {"id": 7, "type": "private"}, "text": "Tests pass."}}),
     ),
   );
@@ -223,7 +279,7 @@ async fn carries_both_ways() {
     message(
       3,
       7,
-      json!({"photo": [{"file_id": "p"}], "caption": "look"}),
+      json!({"photo": [{"file_id": "p"}], "caption": "look", "message_thread_id": 101}),
     ),
   );
   until("two more items", || files(&new).len() == 2).await;
@@ -238,7 +294,8 @@ async fn carries_both_ways() {
     "20261116T170000.000001Z.telegram%3Aluis.md",
     b"**Fine**, thanks.",
   );
-  called(&fake, "sendMessage", "<b>Fine</b>, thanks.").await;
+  let sent = called(&fake, "sendMessage", "<b>Fine</b>, thanks.").await;
+  assert!(sent.body.contains("\"message_thread_id\":101"), "{sent:?}");
   write_outbox(
     &outbox,
     "20261116T170000.000002Z.telegram%3Aluis.png",
@@ -273,5 +330,14 @@ async fn carries_both_ways() {
       .join("new/20261116T170000.000003Z.discord%3Aluis.md")
       .exists()
   );
+  // Luis deleted the lead's topic: the next answer creates it anew and goes there.
+  fake.lock().unwrap().deleted.push(101);
+  write_outbox(
+    &outbox,
+    "20261116T170000.000005Z.telegram%3Aluis.md",
+    b"Still here.",
+  );
+  let sent = called(&fake, "sendMessage", "\"message_thread_id\":103").await;
+  assert!(sent.body.contains("Still here."), "{sent:?}");
   let _ = fs::remove_dir_all(&dir);
 }
