@@ -4,7 +4,7 @@ description: "Message and call your agent in a messaging app, like a friend: a w
 
 # messagent
 
-It is a piece of Ag² (`~/dev/agentics/AGENTS.md`), independent of Vibe Together, and depends only on MindIO (`~/dev/agentics/mindio`), the agent's inbox and outbox, through its crate, as the senses (`~/dev/agentics/senses`) do.
+It is a piece of Luis's agentics (`~/dev/agentics/AGENTS.md`), independent of Vibe Together, and depends only on MindIO (`~/dev/agentics/mindio`), the agent's inbox and outbox, through its crate, as the senses (`~/dev/agentics/senses`) do.
 
 - `design.md`: what is decided, and the questions still open.
 - `telegram.md`: the page for agents, what arrives and how to answer.
