@@ -13,7 +13,7 @@
 use std::{
   collections::BTreeMap,
   fs,
-  io::Write,
+  io::{Read, Write},
   os::unix::fs::{OpenOptionsExt, PermissionsExt},
   path::{Path, PathBuf},
   sync::{Arc, Mutex},
@@ -369,7 +369,14 @@ impl Channel {
     let chat = self
       .chat_of(name)
       .ok_or_else(|| anyhow!("{} is no one this bot knows", item.recipient))?;
-    let bytes = fs::read(&item.path)?;
+    // An item may still stream: it is sent once whole.
+    let path = item.path.clone();
+    let bytes = tokio::task::spawn_blocking(move || {
+      let mut bytes = Vec::new();
+      mindio::follow(&path)?.read_to_end(&mut bytes)?;
+      std::io::Result::Ok(bytes)
+    })
+    .await??;
     let ext = item.ext.to_ascii_lowercase();
     let mut delay = Duration::from_secs(1);
     let mut recreated = false;
