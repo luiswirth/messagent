@@ -1,12 +1,12 @@
 # Telegram
 
-messagent links agents' inboxes and outboxes to one Telegram bot, each agent in a topic of its own, named after it, in each person's private chat with the bot.
+messagent links agents' IO, their inboxes and outboxes, to one Telegram bot, each agent in a topic of its own, named after it, in each person's private chat with the bot.
 The bot needs Threaded Mode, which its owner turns on in BotFather's mini app.
-The inbox and its file convention: `https://github.com/luiswirth/agentinbox/blob/main/AGENTS.md`; the outbox is its dual.
+MindIO, the agent's IO and its file convention: `https://github.com/luiswirth/mindio/blob/main/AGENTS.md`.
 
 ## What arrives
 
-A message from one of the bot's people, in an agent's topic, arrives in that agent's inbox as an item from `telegram:<name>`, proposing a ring:
+A message from one of the bot's people, in an agent's topic, arrives in that agent's inbox as an event from `telegram:<name>`, which wakes the agent unless its waking rules say otherwise:
 a text item whose first line says it is a Telegram message, from whom, and what it replies to, quoted, where it replies to one.
 A photo, a file, a voice note or a video arrives as an item of its own, before the text, which names it.
 Once the agent takes an item in, its message gets 👀 in Telegram.
@@ -21,11 +21,11 @@ messagent sends it into the agent's topic, by its extension:
 - `json`: Telegram's own message, the body of `sendMessage` (`https://core.telegram.org/bots/api#sendmessage`) with `text`, `parse_mode`, `entities`, `link_preview_options` and `disable_notification` alone.
 
 ```sh
-o=$AGENT_OUTBOX; n="$(date -u +%Y%m%dT%H%M%S.%6NZ).telegram%3Aluis.md"
+o=$MINDIO/outbox; n="$(date -u +%Y%m%dT%H%M%S.%6NZ).telegram%3Aluis.md"
 printf '**Done.** The tests pass.\n' > "$o/tmp/$n" && ln "$o/tmp/$n" "$o/new/$n" && rm "$o/tmp/$n"
 ```
 
-Or, with agentinbox's command line: `agentinbox send telegram:luis < answer.md`.
+Or, with MindIO's command line: `mindio send telegram:luis < answer.md`.
 
 The name holds a `:`, which no Vibe Together name can, so no participant there passes for one of the bot's people.
 

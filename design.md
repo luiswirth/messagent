@@ -8,7 +8,7 @@ How each decision came about is in this file's Git history, in Vibe Together's f
 
 - "messagent is just a way for one agent to talk to the user", Luis (2026-11-16).
   It is independent of Vibe Together: a peer that delivers into the agent's inbox, and part of Ag², which he called "more reasonable".
-- "the common building block is truly the inbox": messagent depends only on the inbox's file convention (`~/dev/agentics/inbox/AGENTS.md`), as the senses do; "yes let's lead with the inbox".
+- "the common building block is truly the inbox": messagent depends only on MindIO (`~/dev/agentics/mindio`), the agent's inbox and outbox, as the senses do; "yes let's lead with the inbox".
 - It is no bridge to a Vibe Together session, Luis (2026-11-16):
   mirroring a session is "kind of hacky", since his own messages come back from the bot, and in Vibe Together a Telegram message can't be told apart from a web one;
   and a client of the session is the wrong shape too, "because then the telegram chat and the room are fully out of sync".
@@ -35,7 +35,6 @@ How each decision came about is in this file's Git history, in Vibe Together's f
 ## Open
 
 - Creating the bot: Telegram's managed bots (Bot API 9.6) let a manager bot of Ag²'s create one once the user confirms, but the manager can always fetch or replace its token; or BotFather and a pasted token, with no one in between. Proposed: offer both, the manager's trust stated plainly.
-- The outbox's convention, proposed to live beside the inbox's.
 - Whether a message the agent has taken in gets 👀, and reactions, as in the bridge.
 - Calls: Telegram bots can't call. A call would use voice's core.
 - Voice notes, through voice's speech engines.

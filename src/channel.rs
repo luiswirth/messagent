@@ -1,7 +1,7 @@
 //! messagent's Telegram channel: one bot for several agents, each in a topic of its own in each
-//! person's private chat with the bot, and linked to the agent's inbox and outbox like a
-//! subscriber. What a person writes in an agent's topic is delivered into that agent's inbox,
-//! proposing a ring; what the agent writes into its outbox for `telegram:<name>` goes to its topic
+//! person's private chat with the bot, and linked to the agent's inbox and outbox, its MindIO,
+//! like a subscriber. What a person writes in an agent's topic is delivered into that agent's
+//! inbox, as an event; what the agent writes into its outbox for `telegram:<name>` goes to its topic
 //! in that person's chat.
 //!
 //! It fetches Telegram's updates by long polling, so it listens on nothing, and watches each
@@ -21,12 +21,12 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
+use mindio::{Kind, MindIo, Outgoing};
 use notify::{EventKind, Watcher, event::ModifyKind};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::{
-  maildir::{Maildir, Name},
   markdown,
   telegram::{self, Bot, Message, To, Upload, User},
 };
@@ -42,11 +42,10 @@ const MAX_PIECES: usize = 20;
 /// The longest piece of markdown, leaving room for its tags as HTML.
 const PIECE: usize = 3000;
 
-/// An agent the bot serves: its name, which is its topic's, and its inbox and outbox.
+/// An agent the bot serves: its name, which is its topic's, and its IO.
 pub struct Agent {
   pub name: String,
-  pub inbox: Maildir,
-  pub outbox: Maildir,
+  pub io: MindIo,
 }
 
 /// What the channel runs with.
@@ -165,17 +164,15 @@ impl Channel {
     }
   }
 
-  /// Tells an agent something of messagent's own, through its inbox, proposing a ring.
+  /// Tells an agent something of messagent's own, through its inbox, as an event.
   fn notice(&self, agent: usize, text: &str) {
-    let inbox = &self.agents[agent].inbox;
-    let delivered = inbox
-      .deliver(format!("messagent: {text}\n").as_bytes(), SELF, "txt")
-      .and_then(|_| {
-        if inbox.rings(&[("from", SELF)], true)? {
-          inbox.ring()?;
-        }
-        Ok(())
-      });
+    let delivered = self.agents[agent].io.deliver(
+      format!("messagent: {text}\n").as_bytes(),
+      SELF,
+      "txt",
+      Kind::Event,
+      &[],
+    );
     if let Err(e) = delivered {
       eprintln!("messagent: can't tell the agent: {e}");
     }
@@ -245,7 +242,7 @@ impl Channel {
     name: &str,
     edited: bool,
   ) -> Result<()> {
-    let Agent { inbox, outbox, .. } = &self.agents[agent];
+    let io = &self.agents[agent].io;
     let who = format!("{CHANNEL}:{name}");
     let mut header = format!("Telegram message from {who}");
     if let Some(username) = &from.username {
@@ -272,7 +269,8 @@ impl Channel {
         return Err(anyhow!("the file is too large"));
       }
       let bytes = self.bot.download(&id).await?;
-      let file = inbox.deliver(&bytes, &who, &ext)?;
+      // Quiet: the text after it is the event, and wakes for both.
+      let file = file_name(&io.inbox().deliver(&bytes[..], &who, &ext)?);
       lines.push(format!("[{kind}: the inbox item {file}]"));
       delivered.push(file);
     }
@@ -281,13 +279,11 @@ impl Channel {
     }
     lines.push(format!(
       "(An answer is an item for {who} in the outbox {}.)",
-      outbox.root.display()
+      io.outbox().root.display()
     ));
-    let file = inbox.deliver(lines.join("\n").as_bytes(), &who, "txt")?;
-    delivered.push(file);
-    if inbox.rings(&[("from", &who)], true)? {
-      inbox.ring()?;
-    }
+    let text = lines.join("\n");
+    let file = io.deliver(text.as_bytes(), &who, "txt", Kind::Event, &[])?;
+    delivered.push(file_name(&file));
     let mut unseen = self.unseen.lock().expect("no holder panics");
     for file in delivered {
       unseen.insert(
@@ -306,7 +302,7 @@ impl Channel {
       self
         .agents
         .iter()
-        .any(|a| a.name == name && a.inbox.is_new(file))
+        .any(|a| a.name == name && a.io.inbox().new_dir().join(file).exists())
     })
   }
 
@@ -341,28 +337,24 @@ impl Channel {
 
   /// Sends every item of an agent's outbox for this channel to its person, in the agent's topic.
   async fn send_all(&self, agent: usize) {
-    let outbox = &self.agents[agent].outbox;
     let prefix = format!("{CHANNEL}:");
-    let items = match outbox.untaken(|who| who.starts_with(&prefix)) {
+    let items = match self.agents[agent]
+      .io
+      .outbox()
+      .take(|who| who.starts_with(&prefix))
+    {
       Ok(items) => items,
-      Err(e) => return eprintln!("messagent: can't read the outbox: {e}"),
+      Err(e) => return eprintln!("messagent: can't take from the outbox: {e}"),
     };
     for item in items {
-      let path = match outbox.take(&item) {
-        Ok(Some(path)) => path,
-        Ok(None) => continue,
-        Err(e) => {
-          eprintln!("messagent: can't take {}: {e}", item.file);
-          continue;
-        }
-      };
-      if let Err(e) = self.send(agent, &item, &path).await {
-        eprintln!("messagent: {} wasn't sent: {e:#}", item.file);
+      if let Err(e) = self.send(agent, &item).await {
+        let file = file_name(&item.path);
+        eprintln!("messagent: {file} wasn't sent: {e:#}");
         self.notice(
           agent,
           &format!(
-            "the outbox item {} for {} wasn't sent: {e}",
-            item.file, item.who
+            "the outbox item {file} for {} wasn't sent: {e}",
+            item.recipient
           ),
         );
       }
@@ -372,12 +364,12 @@ impl Channel {
   /// Sends one outbox item by its type: markdown and text as text, a JPEG as a photo, `json` as
   /// Telegram's own `sendMessage`, and anything else as a file. A topic found gone is created anew,
   /// once.
-  async fn send(&self, agent: usize, item: &Name, path: &Path) -> Result<()> {
-    let name = &item.who[CHANNEL.len() + 1..];
+  async fn send(&self, agent: usize, item: &Outgoing) -> Result<()> {
+    let name = &item.recipient[CHANNEL.len() + 1..];
     let chat = self
       .chat_of(name)
-      .ok_or_else(|| anyhow!("{} is no one this bot knows", item.who))?;
-    let bytes = fs::read(path)?;
+      .ok_or_else(|| anyhow!("{} is no one this bot knows", item.recipient))?;
+    let bytes = fs::read(&item.path)?;
     let ext = item.ext.to_ascii_lowercase();
     let mut delay = Duration::from_secs(1);
     let mut recreated = false;
@@ -591,13 +583,20 @@ where
   Ok(watcher)
 }
 
+/// An item's file name, by which `unseen.json` keeps it.
+fn file_name(path: &Path) -> String {
+  path
+    .file_name()
+    .map(|name| name.to_string_lossy().into_owned())
+    .unwrap_or_default()
+}
+
 /// Runs the channel for good.
 pub async fn serve(settings: Settings) -> Result<()> {
   fs::create_dir_all(&settings.state)?;
   fs::set_permissions(&settings.state, fs::Permissions::from_mode(0o700))?;
   for agent in &settings.agents {
-    agent.inbox.create()?;
-    agent.outbox.create()?;
+    agent.io.create()?;
   }
   let topics = read_state(&settings.state.join("topics.json"))?;
   let mut unseen: BTreeMap<String, (i64, i64)> = read_state(&settings.state.join("unseen.json"))?;
@@ -629,7 +628,7 @@ pub async fn serve(settings: Settings) -> Result<()> {
   for agent in 0..channel.agents.len() {
     let sender = channel.clone();
     watchers.push(on_change(
-      &channel.agents[agent].outbox.new_dir(),
+      &channel.agents[agent].io.outbox().new_dir(),
       move || {
         let sender = sender.clone();
         async move { sender.send_all(agent).await }
@@ -637,7 +636,7 @@ pub async fn serve(settings: Settings) -> Result<()> {
     )?);
     let seer = channel.clone();
     watchers.push(on_change(
-      &channel.agents[agent].inbox.new_dir(),
+      &channel.agents[agent].io.inbox().new_dir(),
       move || {
         let seer = seer.clone();
         async move { seer.seen().await }

@@ -843,6 +843,7 @@ dependencies = [
  "axum",
  "clap",
  "jiff",
+ "mindio",
  "notify",
  "pulldown-cmark",
  "reqwest",
@@ -858,6 +859,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5848f5a9e8117cf94f2f90faac24a87ff81600ff8628c1e3deaab572e76bfa1"
 
 [[package]]
+name = "mime2ext"
+version = "0.1.54"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbf6f36070878c42c5233846cd3de24cf9016828fd47bc22957a687298bb21fc"
+
+[[package]]
 name = "mime_guess"
 version = "2.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -865,6 +872,18 @@ checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
 dependencies = [
  "mime",
  "unicase",
+]
+
+[[package]]
+name = "mindio"
+version = "0.1.0"
+source = "git+https://github.com/luiswirth/mindio#b9585682f04e4831b1df0bd1fc9c6dd4d5b949c6"
+dependencies = [
+ "jiff",
+ "libc",
+ "mime2ext",
+ "mime_guess",
+ "notify",
 ]
 
 [[package]]

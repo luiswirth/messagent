@@ -48,7 +48,7 @@
         pname = "messagent";
         version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
         src = ./.;
-        # Vibe Together's crates are git dependencies, pinned by Cargo.lock.
+        # mindio is a git dependency, pinned by Cargo.lock.
         cargoLock = {
           lockFile = ./Cargo.lock;
           allowBuiltinFetchGit = true;
@@ -56,7 +56,7 @@
         # rustls's crypto, which nixpkgs links against its own AWS-LC.
         nativeBuildInputs = [pkgs.pkg-config];
         buildInputs = [pkgs.aws-lc];
-        # The tests run a Vibe Together backend, whose build wants more than the sandbox gives: `just ci` runs them.
+        # `just ci` runs the tests, outside the sandbox.
         doCheck = false;
         meta.mainProgram = "messagent";
       };

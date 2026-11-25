@@ -1,7 +1,6 @@
 //! messagent: message your agent in a messaging app, like a friend.
 
 mod channel;
-mod maildir;
 mod markdown;
 mod telegram;
 
@@ -10,7 +9,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 
-/// Links agents' inboxes and outboxes to one Telegram bot, each agent in a topic of its own in each
+/// Links agents' IO, MindIO's inbox and outbox, to one Telegram bot, each agent in a topic of its own in each
 /// person's chat with the bot: what a person writes in an agent's topic is delivered into its inbox
 /// as from `telegram:<name>`, and what the agent writes into its outbox for `telegram:<name>`
 /// reaches its topic in that person's chat.
@@ -23,12 +22,9 @@ struct Cli {
   /// An agent the bot serves, by its name, which its topic takes; repeated for several.
   #[arg(long, value_name = "NAME", required = true)]
   agent: Vec<String>,
-  /// The directory of the agents' inboxes, each `<dir>/<agent>`; by default `~/.agents/inbox`.
+  /// The directory of the agents' IO, each `<dir>/<agent>`; by default `~/.agents/mindio`.
   #[arg(long, value_name = "DIR")]
-  inboxes: Option<PathBuf>,
-  /// The directory of the agents' outboxes, each `<dir>/<agent>`; by default `~/.agents/outbox`.
-  #[arg(long, value_name = "DIR")]
-  outboxes: Option<PathBuf>,
+  agents: Option<PathBuf>,
   /// A person who may write to the bot, as `<telegram id>=<name>`, such as `9118774471=luis`;
   /// repeated for several. Everyone else is ignored.
   #[arg(long, value_name = "ID=NAME", required = true)]
@@ -63,17 +59,12 @@ async fn main() -> Result<()> {
       ))
     })
     .collect::<Result<_>>()?;
-  let agents_dir = || -> Result<PathBuf> {
-    let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
-    Ok(PathBuf::from(home).join(".agents"))
-  };
-  let inboxes = match cli.inboxes {
+  let dir = match cli.agents {
     Some(dir) => dir,
-    None => agents_dir()?.join("inbox"),
-  };
-  let outboxes = match cli.outboxes {
-    Some(dir) => dir,
-    None => agents_dir()?.join("outbox"),
+    None => {
+      let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
+      PathBuf::from(home).join(".agents/mindio")
+    }
   };
   let mut agents = Vec::new();
   for name in cli.agent {
@@ -91,8 +82,7 @@ async fn main() -> Result<()> {
       return Err(anyhow!("the agent `{name}` is given twice"));
     }
     agents.push(channel::Agent {
-      inbox: maildir::Maildir::new(inboxes.join(&name)),
-      outbox: maildir::Maildir::new(outboxes.join(&name)),
+      io: mindio::MindIo::new(dir.join(&name)),
       name,
     });
   }

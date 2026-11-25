@@ -1,5 +1,5 @@
-//! The channel end to end: messagent's binary between a fake Telegram and two agents' inboxes and
-//! outboxes in a scratch directory, each agent in a topic of its own.
+//! The channel end to end: messagent's binary between a fake Telegram and two agents' IO, their
+//! inboxes and outboxes, in a scratch directory, each agent in a topic of its own.
 
 use std::{
   collections::VecDeque,
@@ -173,8 +173,14 @@ async fn carries_both_ways() {
   let _ = fs::remove_dir_all(&dir);
   fs::create_dir_all(&dir).unwrap();
   // The agents `lead`, the first topic, 101, and `news`, the second, 102.
-  let (inbox, outbox) = (dir.join("inbox/lead"), dir.join("outbox/lead"));
-  let (news_inbox, news_outbox) = (dir.join("inbox/news"), dir.join("outbox/news"));
+  let (inbox, outbox) = (
+    dir.join("mindio/lead/inbox"),
+    dir.join("mindio/lead/outbox"),
+  );
+  let (news_inbox, news_outbox) = (
+    dir.join("mindio/news/inbox"),
+    dir.join("mindio/news/outbox"),
+  );
 
   let fake: Shared = Default::default();
   let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -194,8 +200,7 @@ async fn carries_both_ways() {
     Command::new(env!("CARGO_BIN_EXE_messagent"))
       .args(["--bot-token", token.to_str().unwrap()])
       .args(["--agent", "lead", "--agent", "news"])
-      .args(["--inboxes", dir.join("inbox").to_str().unwrap()])
-      .args(["--outboxes", dir.join("outbox").to_str().unwrap()])
+      .args(["--agents", dir.join("mindio").to_str().unwrap()])
       .args(["--state", dir.join("state").to_str().unwrap()])
       .args(["--person", "7=luis", "--telegram-api", &telegram])
       .spawn()
@@ -237,7 +242,7 @@ async fn carries_both_ways() {
   let sent = called(&fake, "sendMessage", "Nothing yet.").await;
   assert!(sent.body.contains("\"message_thread_id\":102"), "{sent:?}");
   // Luis's message in the lead's topic reaches the lead's inbox as his, with what it replies to,
-  // and rings.
+  // and wakes the agent.
   push(
     &fake,
     message(
@@ -259,7 +264,7 @@ async fn carries_both_ways() {
     "{text}"
   );
   assert!(text.contains("how is it going?"), "{text}");
-  assert!(inbox.join("wake").exists());
+  assert!(dir.join("mindio/lead/wake").exists());
   assert!(
     fake
       .lock()
